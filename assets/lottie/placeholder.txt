@@ -1,0 +1,2 @@
+This is a placeholder file for assets/lottie directory.
+Replace with actual .json Lottie files as needed.

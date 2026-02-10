@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "873361647636",
+    "project_id": "online-booking-84498",
+    "storage_bucket": "online-booking-84498.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:873361647636:android:f7ef0ea3e3354b9a0f9f01",
+        "android_client_info": {
+          "package_name": "com.example.online_booking"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "873361647636-vhh2737dbt3tqvfsa436auldhb838ieo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.online_booking",
+            "certificate_hash": "22215360a71c498e0e343f87535ded70a37024d5"
+          }
+        },
+        {
+          "client_id": "873361647636-jur2nfppjuqugmgv4lcm7oh9dpbu3dlp.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBBYF-O_9jRmQfQnVv3FMdDPhIsG2stR6k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "873361647636-jur2nfppjuqugmgv4lcm7oh9dpbu3dlp.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "873361647636-j1j6nqloibk3hruvn127sk5sdbuv31u9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.onlineBooking"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,2 @@
+This is a placeholder file for assets/images directory.
+Replace with actual image files (PNG/JPG) as needed.

@@ -1,0 +1,2 @@
+This is a placeholder file for assets/vectors directory.
+Replace with actual SVG files as needed.
