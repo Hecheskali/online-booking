@@ -5,12 +5,12 @@ class PaymentService {
   // 🔑 CHANGE TO LIVE KEYS FOR REAL PAYMENTS
   // PUBLIC KEY: Found in Flutterwave Dashboard -> Settings -> API Keys
   static const String publicKey =
-      "FLWPUBK_TEST-f985bfc01b86225190c2c81e267ccae8-X";
+      "FLWPUBK_TEST-1dea82f210e06634ebfa7a4173df8529-X";
   // ENCRYPTION KEY: Found in the same place
-  static const String encryptionKey = "FLWSECK_TESTb0e51a2d6335";
+  static const String encryptionKey = "FLWSECK_TEST0836eac13b4d";
   static const String currency = "TZS";
 
-  /// Real Payment wrapper using Flutterwave Standard
+  /// Real Payment wrapper using Flutterwave Standard for Mobile Money
   Future<bool> initiateStkPush({
     required BuildContext context,
     required String phoneNumber,
@@ -53,21 +53,65 @@ class PaymentService {
     try {
       final ChargeResponse response = await flutterwave.charge(context);
 
-      if (response != null) {
-        // Print the FULL response so we can see the real error from Flutterwave
-        debugPrint("🔵 FLUTTERWAVE FULL RESPONSE: ${response.toJson()}");
+      // Print the FULL response so we can see the real error from Flutterwave
+      debugPrint("🔵 FLUTTERWAVE FULL RESPONSE: ${response.toJson()}");
 
-        if (response.success == true ||
-            response.status?.toLowerCase() == "success") {
-          return true;
-        } else {
-          debugPrint("❌ Payment Declined: ${response.status}");
-        }
+      if (response.success == true ||
+          response.status?.toLowerCase() == "success") {
+        return true;
       } else {
-        debugPrint("🛑 User closed the payment modal without completing.");
+        debugPrint("❌ Payment Declined: ${response.status}");
       }
     } catch (e) {
       debugPrint("💥 CRITICAL GATEWAY ERROR: $e");
+    }
+    return false;
+  }
+
+  /// Bank Transfer Payment using Flutterwave Standard
+  Future<bool> initiateBank({
+    required BuildContext context,
+    required String bankName,
+    required double amount,
+    required String email,
+    required String fullName,
+  }) async {
+    final customer = Customer(
+      email: email,
+      name: fullName,
+    );
+
+    final flutterwave = Flutterwave(
+      publicKey: publicKey,
+      currency: currency,
+      redirectUrl: "https://heches-bus.web.app/callback",
+      txRef: "HECHES-BANK-${DateTime.now().millisecondsSinceEpoch}",
+      amount: amount.toStringAsFixed(0),
+      customer: customer,
+      // 🇹🇿 Bank Transfer option for Tanzania
+      paymentOptions: "banktransfer",
+      customization: Customization(
+        title: "Heches Royal Transport",
+        description: "Bus Ticket Payment - $bankName",
+        logo:
+            "https://firebasestorage.googleapis.com/v0/b/online-booking-84498.appspot.com/o/logo.png?alt=media",
+      ),
+      isTestMode: false,
+    );
+
+    try {
+      final ChargeResponse response = await flutterwave.charge(context);
+
+      debugPrint("🔵 BANK TRANSFER RESPONSE: ${response.toJson()}");
+
+      if (response.success == true ||
+          response.status?.toLowerCase() == "success") {
+        return true;
+      } else {
+        debugPrint("❌ Bank Transfer Declined: ${response.status}");
+      }
+    } catch (e) {
+      debugPrint("💥 BANK TRANSFER ERROR: $e");
     }
     return false;
   }
