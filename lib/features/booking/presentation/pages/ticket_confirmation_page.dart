@@ -1,9 +1,13 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:intl/intl.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
 import '../../../../core/theme/app_colors.dart';
 import '../../../search/domain/entities/bus.dart';
@@ -14,12 +18,16 @@ class TicketConfirmationPage extends StatefulWidget {
   final Bus bus;
   final List<String> selectedSeats;
   final String passengerName;
+  final DateTime travelDate;
+  final String? orderId;
 
   const TicketConfirmationPage({
     super.key,
     required this.bus,
     required this.selectedSeats,
     required this.passengerName,
+    required this.travelDate,
+    this.orderId,
   });
 
   @override
@@ -28,20 +36,99 @@ class TicketConfirmationPage extends StatefulWidget {
 
 class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   final ScreenshotController screenshotController = ScreenshotController();
-  late String _securityHash;
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  String? _securityHash;
+  String _paymentStatus = 'pending';
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
 
   @override
   void initState() {
     super.initState();
-    _securityHash = SecurityService.generateTicketHash(
-        "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-ROYAL-VVIP-2024");
+    _startPaymentListener();
+  }
+
+  @override
+  void dispose() {
+    _paymentSub?.cancel();
+    super.dispose();
+  }
+
+  void _startPaymentListener() {
+    final String? orderId = widget.orderId;
+    if (orderId == null || orderId.isEmpty) {
+      _paymentStatus = 'completed';
+      _initSecurityHash();
+      return;
+    }
+
+    _paymentStatus = 'pending';
+    _paymentSub = FirebaseFirestore.instance
+        .collection('payments')
+        .doc(orderId)
+        .snapshots()
+        .listen((snapshot) {
+      final data = snapshot.data();
+      if (data == null) return;
+
+      final status = (data['status'] ?? '').toString().toLowerCase();
+      if (status.isEmpty) return;
+
+      if (status == 'completed') {
+        if (mounted) {
+          setState(() => _paymentStatus = 'completed');
+        } else {
+          _paymentStatus = 'completed';
+        }
+        _paymentSub?.cancel();
+        _initSecurityHash();
+        return;
+      }
+
+      if (status == 'failed' ||
+          status == 'cancelled' ||
+          status == 'canceled' ||
+          status == 'error') {
+        if (mounted) {
+          setState(() => _paymentStatus = 'failed');
+        } else {
+          _paymentStatus = 'failed';
+        }
+        _paymentSub?.cancel();
+      }
+    }, onError: (_) {
+      if (mounted) {
+        setState(() => _paymentStatus = 'failed');
+      } else {
+        _paymentStatus = 'failed';
+      }
+    });
+  }
+
+  Future<void> _initSecurityHash() async {
+    // _securityHash = SecurityService.generateTicketHash(
+    //     "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-ROYAL-VVIP-2024");
+    try {
+      final secret =
+          await _secureStorage.read(key: 'ticket_secret') ?? 'ticket-secret';
+      final hash = SecurityService.generateTicketHash(
+          "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-$secret");
+      if (mounted) {
+        setState(() => _securityHash = hash);
+      }
+    } catch (_) {
+      final fallbackHash = SecurityService.generateTicketHash(
+          "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-ticket-secret");
+      if (mounted) {
+        setState(() => _securityHash = fallbackHash);
+      }
+    }
   }
 
   Future<void> _downloadTicket() async {
     try {
       final image = await screenshotController.capture();
       if (image != null) {
-        final directory = await getTemporaryDirectory();
+        final directory = await getApplicationDocumentsDirectory();
         final imagePath = await File(
                 '${directory.path}/royal_ticket_${DateTime.now().millisecondsSinceEpoch}.png')
             .create();
@@ -68,6 +155,129 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_paymentStatus == 'pending') {
+      return Scaffold(
+        backgroundColor: const Color(0xFF020617),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(color: Colors.white),
+                const SizedBox(height: 20),
+                const Text(
+                  "Waiting for payment confirmation",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "Please approve the payment on your phone to unlock your ticket.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const MainBottomNav()),
+                      (route) => false,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side:
+                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      "BACK TO HOME",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_paymentStatus == 'failed') {
+      return Scaffold(
+        backgroundColor: const Color(0xFF020617),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.error_outline,
+                    color: Colors.redAccent, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  "Payment not completed",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "We couldn’t confirm your payment. Please try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const MainBottomNav()),
+                      (route) => false,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side:
+                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      "BACK TO HOME",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_securityHash == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF020617),
+        body: Center(
+          child: CircularProgressIndicator(color: Colors.white),
+        ),
+      );
+    }
+
+    final String securityHash = _securityHash!;
     bool isVVIP =
         widget.selectedSeats.any((s) => s.contains('53') || s.contains('54'));
 
@@ -140,7 +350,9 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
             const SizedBox(height: 24),
             Screenshot(
               controller: screenshotController,
-              child: isVVIP ? _buildRoyalVVIPTicket() : _buildMajesticTicket(),
+              child: isVVIP
+                  ? _buildRoyalVVIPTicket(securityHash)
+                  : _buildMajesticTicket(securityHash),
             ),
             const SizedBox(height: 32),
             FadeInUp(
@@ -198,7 +410,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
     );
   }
 
-  Widget _buildRoyalVVIPTicket() {
+  Widget _buildRoyalVVIPTicket(String securityHash) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -343,7 +555,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                     ],
                   ),
                   child: QrImageView(
-                    data: "ROYAL-VVIP-$_securityHash",
+                    data: "ROYAL-VVIP-$securityHash",
                     version: QrVersions.auto,
                     size: 100.0,
                     foregroundColor: const Color(0xFF020617),
@@ -375,7 +587,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
     );
   }
 
-  Widget _buildMajesticTicket() {
+  Widget _buildMajesticTicket(String securityHash) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -440,9 +652,10 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _item("DATE", "OCT 24, 2023"),
+                    _item("DATE",
+                        DateFormat.yMMMd().format(widget.travelDate)),
                     _item("SECURE ID",
-                        _securityHash.substring(0, 8).toUpperCase(),
+                        securityHash.substring(0, 8).toUpperCase(),
                         isAccent: true),
                   ],
                 ),
@@ -474,7 +687,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   ),
                 ),
                 QrImageView(
-                  data: "VALID-TICKET-$_securityHash",
+                  data: "VALID-TICKET-$securityHash",
                   version: QrVersions.auto,
                   size: 100.0,
                   foregroundColor: const Color(0xFF020617),

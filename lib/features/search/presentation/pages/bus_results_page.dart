@@ -177,7 +177,15 @@ class BusResultsPage extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SeatSelectionPage(bus: bus))),
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SeatSelectionPage(
+                bus: bus,
+                travelDate: date,
+              ),
+            ),
+          ),
           borderRadius: BorderRadius.circular(24),
           child: Column(
             children: [

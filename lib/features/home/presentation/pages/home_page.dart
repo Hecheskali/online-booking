@@ -52,104 +52,118 @@ class _HomePageState extends State<HomePage>
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => Container(
-          padding: const EdgeInsets.all(32),
-          decoration: const BoxDecoration(
-            color: AppColors.darkSurface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                "JOURNEY ALERTS",
-                style: TextStyle(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 12,
-                    letterSpacing: 2),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                "Set offline reminder sounds based on your booked tickets.",
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              const SizedBox(height: 24),
-
-              // Custom Sound Picker
-              GestureDetector(
-                onTap: () async {
-                  await _pickCustomSound();
-                  setSheetState(() {});
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border:
-                        Border.all(color: AppColors.accent.withOpacity(0.3)),
-                  ),
-                  child: Row(
+        builder: (context, setSheetState) {
+          final viewInsets = MediaQuery.of(context).viewInsets;
+          final maxHeight = MediaQuery.of(context).size.height * 0.85;
+          return SafeArea(
+            top: false,
+            child: Padding(
+              padding: EdgeInsets.only(bottom: viewInsets.bottom),
+              child: Container(
+                constraints: BoxConstraints(maxHeight: maxHeight),
+                padding: const EdgeInsets.all(32),
+                decoration: const BoxDecoration(
+                  color: AppColors.darkSurface,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.music_note_rounded,
-                          color: AppColors.accent),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _customSoundName ?? "SELECT CUSTOM ALERT SOUND",
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
+                      const Text(
+                        "JOURNEY ALERTS",
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                            letterSpacing: 2),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "Set offline reminder sounds based on your booked tickets.",
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      const SizedBox(height: 24),
+
+                      // Custom Sound Picker
+                      GestureDetector(
+                        onTap: () async {
+                          await _pickCustomSound();
+                          setSheetState(() {});
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(16),
+                            border:
+                                Border.all(color: AppColors.accent.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.music_note_rounded,
+                                  color: AppColors.accent),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _customSoundName ?? "SELECT CUSTOM ALERT SOUND",
+                                  style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const Icon(Icons.add_circle_outline_rounded,
+                                  color: AppColors.accent, size: 18),
+                            ],
+                          ),
                         ),
                       ),
-                      const Icon(Icons.add_circle_outline_rounded,
-                          color: AppColors.accent, size: 18),
+
+                      const SizedBox(height: 24),
+                      _buildAlarmTile("30 MINUTES BEFORE", 30),
+                      _buildAlarmTile("15 MINUTES BEFORE", 15),
+                      _buildAlarmTile("10 MINUTES BEFORE", 10),
+                      const SizedBox(height: 24),
+                      Container(
+                        width: double.infinity,
+                        height: 60,
+                        decoration: BoxDecoration(
+                          gradient: AppColors.primaryGradient,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: ElevatedButton(
+                          onPressed: () {
+                            _scheduleOfflineReminders();
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                    "Alerts activated with ${_customSoundName ?? 'default sound'}!"),
+                                backgroundColor: AppColors.accent,
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                          ),
+                          child: const Text("ACTIVATE ALERTS",
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800, color: Colors.white)),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
-
-              const SizedBox(height: 24),
-              _buildAlarmTile("30 MINUTES BEFORE", 30),
-              _buildAlarmTile("15 MINUTES BEFORE", 15),
-              _buildAlarmTile("10 MINUTES BEFORE", 10),
-              const SizedBox(height: 32),
-              Container(
-                width: double.infinity,
-                height: 60,
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: ElevatedButton(
-                  onPressed: () {
-                    _scheduleOfflineReminders();
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                            "Alerts activated with ${_customSoundName ?? 'default sound'}!"),
-                        backgroundColor: AppColors.accent,
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.transparent,
-                    shadowColor: Colors.transparent,
-                  ),
-                  child: const Text("ACTIVATE ALERTS",
-                      style: TextStyle(
-                          fontWeight: FontWeight.w800, color: Colors.white)),
-                ),
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -6,7 +6,12 @@ import 'passenger_details_page.dart';
 
 class SeatSelectionPage extends StatefulWidget {
   final Bus bus;
-  const SeatSelectionPage({super.key, required this.bus});
+  final DateTime travelDate;
+  const SeatSelectionPage({
+    super.key,
+    required this.bus,
+    required this.travelDate,
+  });
 
   @override
   State<SeatSelectionPage> createState() => _SeatSelectionPageState();
@@ -435,6 +440,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                             bus: widget.bus,
                             selectedSeats:
                                 selectedSeats.map((s) => "Seat $s").toList(),
+                            travelDate: widget.travelDate,
                           ),
                         ),
                       );

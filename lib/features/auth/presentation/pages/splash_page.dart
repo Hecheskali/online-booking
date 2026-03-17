@@ -99,7 +99,7 @@ class _SplashPageState extends State<SplashPage> {
                     child: Column(
                       children: [
                         const Text(
-                          "NEXTGEN BUS",
+                          "HECHES BUS",
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 40,

@@ -44,6 +44,8 @@ class Bus {
     );
   }
 
+  DateTime? get departureDate => null;
+
   Map<String, dynamic> toFirestore() {
     return {
       'name': name,

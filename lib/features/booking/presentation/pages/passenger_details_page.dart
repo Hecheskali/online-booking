@@ -7,11 +7,13 @@ import 'payment_page.dart';
 class PassengerDetailsPage extends StatefulWidget {
   final Bus bus;
   final List<String> selectedSeats;
+  final DateTime travelDate;
 
   const PassengerDetailsPage({
     super.key,
     required this.bus,
     required this.selectedSeats,
+    required this.travelDate,
   });
 
   @override
@@ -286,6 +288,7 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                       selectedSeats: widget.selectedSeats,
                       passengerNames: _nameControllers.map((c) => c.text).toList(),
                       phone: _phoneController.text,
+                      travelDate: widget.travelDate,
                     ),
                   ),
                 );

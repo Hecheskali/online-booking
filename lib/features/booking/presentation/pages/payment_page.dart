@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
@@ -11,6 +13,7 @@ class PaymentPage extends StatefulWidget {
   final List<String> selectedSeats;
   final List<String> passengerNames;
   final String phone;
+  final DateTime travelDate;
 
   const PaymentPage({
     super.key,
@@ -18,6 +21,7 @@ class PaymentPage extends StatefulWidget {
     required this.selectedSeats,
     required this.passengerNames,
     required this.phone,
+    required this.travelDate,
   });
 
   @override
@@ -31,6 +35,9 @@ class _PaymentPageState extends State<PaymentPage> {
   String selectedMethod = 'M-Pesa';
   String selectedPaymentType = 'mobile'; // 'mobile' or 'bank'
   bool _isProcessing = false;
+  bool _isPendingSheetOpen = false;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
+  String? _latestOrderId;
 
   @override
   void initState() {
@@ -40,12 +47,13 @@ class _PaymentPageState extends State<PaymentPage> {
 
   @override
   void dispose() {
+    _paymentSub?.cancel();
     _paymentPhoneController.dispose();
     super.dispose();
   }
 
   final List<Map<String, dynamic>> mobilePaymentMethods = [
-    {'name': 'M-Pesa', 'icon': Icons.phone_android, 'color': Colors.red},
+    {'name': 'M-Pesa', 'icon': Icons.phone_iphone, 'color': Colors.red},
     {'name': 'Tigo Pesa', 'icon': Icons.phone_android, 'color': Colors.blue},
     {
       'name': 'Airtel Money',
@@ -91,15 +99,23 @@ class _PaymentPageState extends State<PaymentPage> {
 
     final double totalAmount = _calculateTotal();
     final user = FirebaseAuth.instance.currentUser;
+    String? orderId;
+    if (selectedPaymentType == 'mobile') {
+      orderId = "ZEN-${DateTime.now().millisecondsSinceEpoch}";
+      _latestOrderId = orderId;
+    } else {
+      _latestOrderId = null;
+    }
 
     try {
-      final bool success = selectedPaymentType == 'mobile'
-          ? await _paymentService.initiateStkPush(
+      final PaymentInitResult result = selectedPaymentType == 'mobile'
+          ? await _paymentService.initiateZenopayPayment(
               context: context,
               phoneNumber: _paymentPhoneController.text,
               amount: totalAmount,
               email: user?.email ?? "traveler@heches.com",
               fullName: widget.passengerNames[0],
+              orderId: orderId!,
             )
           : await _paymentService.initiateBank(
               context: context,
@@ -111,13 +127,20 @@ class _PaymentPageState extends State<PaymentPage> {
 
       if (mounted) {
         setState(() => _isProcessing = false);
-        if (success) {
-          _showSuccessAndGenerateTicket();
+        if (result.isSuccess) {
+          _showSuccessAndGenerateTicket(orderId);
+        } else if (result.isPending) {
+          _showPendingSheet(result.message);
+          if (orderId != null) {
+            _listenForPaymentStatus(orderId);
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                  "Payment unsuccessful or cancelled. Check your balance/PIN."),
+                result.message ??
+                    "Payment unsuccessful or cancelled. Check your balance/PIN.",
+              ),
               backgroundColor: AppColors.error,
               behavior: SnackBarBehavior.floating,
             ),
@@ -137,7 +160,123 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
-  void _showSuccessAndGenerateTicket() {
+  void _listenForPaymentStatus(String orderId) {
+    _paymentSub?.cancel();
+    _paymentSub = FirebaseFirestore.instance
+        .collection('payments')
+        .doc(orderId)
+        .snapshots()
+        .listen((snapshot) {
+      final data = snapshot.data();
+      if (data == null) return;
+
+      final String status = (data['status'] ?? '').toString().toLowerCase();
+      if (status.isEmpty) return;
+
+      if (status == 'completed') {
+        _paymentSub?.cancel();
+        _closePendingSheetIfOpen();
+        if (mounted) _showSuccessAndGenerateTicket(orderId);
+        return;
+      }
+
+      if (status == 'failed' ||
+          status == 'cancelled' ||
+          status == 'canceled' ||
+          status == 'error') {
+        _paymentSub?.cancel();
+        _closePendingSheetIfOpen();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                "Payment failed or cancelled. Please try again or use a different number."),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }, onError: (_) {
+      _paymentSub?.cancel();
+      _closePendingSheetIfOpen();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Payment status check failed. Please try again."),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
+  }
+
+  void _showPendingSheet(String? message) {
+    _isPendingSheetOpen = true;
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(28),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            const CircularProgressIndicator(color: AppColors.primary),
+            const SizedBox(height: 20),
+            const Text(
+              "Awaiting Payment Confirmation",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message ??
+                  "A payment request was sent to your phone. Please approve it to continue.",
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  color: AppColors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: OutlinedButton(
+                onPressed: () {
+                  _paymentSub?.cancel();
+                  _closePendingSheetIfOpen();
+                },
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.textMuted),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: const Text(
+                  "CANCEL",
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(() => _isPendingSheetOpen = false);
+  }
+
+  void _closePendingSheetIfOpen() {
+    if (_isPendingSheetOpen && mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _showSuccessAndGenerateTicket(String? orderId) {
     showModalBottomSheet(
       context: context,
       isDismissible: false,
@@ -191,6 +330,8 @@ class _PaymentPageState extends State<PaymentPage> {
                         bus: widget.bus,
                         selectedSeats: widget.selectedSeats,
                         passengerName: widget.passengerNames[0],
+                        travelDate: widget.travelDate,
+                        orderId: orderId ?? _latestOrderId,
                       ),
                     ),
                   );
@@ -290,7 +431,7 @@ class _PaymentPageState extends State<PaymentPage> {
                     Icon(Icons.lock_rounded,
                         size: 12, color: AppColors.textMuted),
                     SizedBox(width: 8),
-                    Text("SECURED BY FLUTTERWAVE",
+                    Text("SECURED BY ZENOPAY",
                         style: TextStyle(
                             fontSize: 10,
                             color: AppColors.textMuted,
