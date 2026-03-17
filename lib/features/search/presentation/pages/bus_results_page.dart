@@ -18,14 +18,14 @@ class BusResultsPage extends StatelessWidget {
 
   double _calculatePrice(String from, String to) {
     final routes = {
-      'Dar es Salaam-Arusha': 42000.0,
-      'Dar es Salaam-Mwanza': 60000.0,
-      'Dar es Salaam-Dodoma': 25000.0,
-      'Arusha-Mwanza': 45000.0,
-      'Mwanza-Dar es Salaam': 60000.0,
+      'Dar es Salaam-Arusha': 50.0,
+      'Dar es Salaam-Mwanza': 60.0,
+      'Dar es Salaam-Dodoma': 250.0,
+      'Arusha-Mwanza': 450.0,
+      'Mwanza-Dar es Salaam': 600.0,
     };
     String key = '$from-$to';
-    return routes[key] ?? 60000.00;
+    return routes[key] ?? 600.00;
   }
 
   List<Bus> _getMockBuses(double basePrice) {
