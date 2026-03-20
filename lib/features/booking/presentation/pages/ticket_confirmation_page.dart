@@ -37,9 +37,11 @@ class TicketConfirmationPage extends StatefulWidget {
 class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   final ScreenshotController screenshotController = ScreenshotController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  static const Duration _paymentTimeout = Duration(minutes: 2);
   String? _securityHash;
   String _paymentStatus = 'pending';
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
+  Timer? _paymentTimeoutTimer;
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   @override
   void dispose() {
     _paymentSub?.cancel();
+    _paymentTimeoutTimer?.cancel();
     super.dispose();
   }
 
@@ -62,6 +65,8 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
     }
 
     _paymentStatus = 'pending';
+    _paymentTimeoutTimer?.cancel();
+    _startPaymentTimeout(orderId);
     _paymentSub = FirebaseFirestore.instance
         .collection('payments')
         .doc(orderId)
@@ -74,6 +79,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
       if (status.isEmpty) return;
 
       if (status == 'completed') {
+        _paymentTimeoutTimer?.cancel();
         if (mounted) {
           setState(() => _paymentStatus = 'completed');
         } else {
@@ -84,10 +90,22 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
         return;
       }
 
-      if (status == 'failed' ||
-          status == 'cancelled' ||
+      if (status == 'cancelled' ||
           status == 'canceled' ||
-          status == 'error') {
+          status == 'timeout' ||
+          status == 'expired') {
+        _paymentTimeoutTimer?.cancel();
+        if (mounted) {
+          setState(() => _paymentStatus = 'cancelled');
+        } else {
+          _paymentStatus = 'cancelled';
+        }
+        _paymentSub?.cancel();
+        return;
+      }
+
+      if (status == 'failed' || status == 'error') {
+        _paymentTimeoutTimer?.cancel();
         if (mounted) {
           setState(() => _paymentStatus = 'failed');
         } else {
@@ -96,12 +114,56 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
         _paymentSub?.cancel();
       }
     }, onError: (_) {
+      _paymentTimeoutTimer?.cancel();
       if (mounted) {
         setState(() => _paymentStatus = 'failed');
       } else {
         _paymentStatus = 'failed';
       }
     });
+  }
+
+  void _startPaymentTimeout(String orderId) {
+    _paymentTimeoutTimer?.cancel();
+    _paymentTimeoutTimer = Timer(_paymentTimeout, () async {
+      final didCancel =
+          await _cancelPendingPayment(orderId, reason: 'timeout');
+      if (!didCancel) return;
+      if (mounted) {
+        setState(() => _paymentStatus = 'cancelled');
+      } else {
+        _paymentStatus = 'cancelled';
+      }
+      _paymentSub?.cancel();
+    });
+  }
+
+  Future<bool> _cancelPendingPayment(String orderId,
+      {required String reason}) async {
+    try {
+      final ref = FirebaseFirestore.instance.collection('payments').doc(orderId);
+      return await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        if (!snap.exists) return false;
+        final data = snap.data() ?? {};
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        if (status == 'completed') return false;
+        if (status == 'failed' ||
+            status == 'cancelled' ||
+            status == 'canceled' ||
+            status == 'error') {
+          return false;
+        }
+        tx.update(ref, {
+          'status': 'cancelled',
+          'cancelReason': reason,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> _initSecurityHash() async {
@@ -235,6 +297,63 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                 const SizedBox(height: 10),
                 Text(
                   "We couldn’t confirm your payment. Please try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const MainBottomNav()),
+                      (route) => false,
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side:
+                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: const Text(
+                      "BACK TO HOME",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_paymentStatus == 'cancelled') {
+      return Scaffold(
+        backgroundColor: const Color(0xFF020617),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cancel_outlined,
+                    color: Colors.orangeAccent, size: 48),
+                const SizedBox(height: 16),
+                const Text(
+                  "Payment cancelled",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  "The payment was cancelled on your phone or timed out.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: Colors.white.withOpacity(0.6), fontSize: 12),

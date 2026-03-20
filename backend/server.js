@@ -33,6 +33,15 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+function sanitizeReference(value, maxLen) {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).replace(/\s+/g, " ").trim();
+  if (!raw) return null;
+  const cleaned = raw.replace(/[^A-Za-z0-9 \\-_.]/g, "");
+  if (!cleaned) return null;
+  return cleaned.slice(0, maxLen);
+}
+
 app.get("/", (req, res) => {
   res.send("Heches Bus Booking Backend with Zenopay is Running");
 });
@@ -48,7 +57,16 @@ app.post("/zenopay-pay", async (req, res) => {
       buyer_name,
       buyer_phone,
       amount,
+      payment_reference,
     } = req.body || {};
+
+    console.log("🔵 /zenopay-pay fields:", {
+      buyer_email,
+      buyer_name,
+      buyer_phone,
+      amount,
+      payment_reference,
+    });
 
     if (!buyer_email || !buyer_name || !buyer_phone || !amount) {
       return res.status(400).json({
@@ -62,6 +80,11 @@ app.post("/zenopay-pay", async (req, res) => {
     const secretKey = process.env.ZENOPAY_SECRET_KEY;
     const webhookUrl = process.env.ZENOPAY_WEBHOOK_URL;
     const baseUrl = process.env.ZENOPAY_BASE_URL || "https://api.zeno.africa";
+    const referenceField = process.env.ZENOPAY_REFERENCE_FIELD;
+    const referenceMaxLen = Number.parseInt(
+      process.env.ZENOPAY_REFERENCE_MAX_LEN || "40",
+      10
+    );
 
     if (!apiKey || !accountId) {
       return res.status(500).json({
@@ -86,6 +109,14 @@ app.post("/zenopay-pay", async (req, res) => {
 
     if (webhookUrl) {
       payload.append("webhook_url", webhookUrl);
+    }
+
+    const sanitizedReference = sanitizeReference(
+      payment_reference,
+      Number.isFinite(referenceMaxLen) ? referenceMaxLen : 40
+    );
+    if (referenceField && sanitizedReference) {
+      payload.append(referenceField, sanitizedReference);
     }
 
     const zenoUrl = baseUrl.endsWith("/")
@@ -136,21 +167,44 @@ app.post("/zenopay-webhook", async (req, res) => {
 
   try {
     // Map Zenopay status to our app status
+    const normalizedStatus = (status || '').toString().toLowerCase();
     let appStatus = 'pending';
-    if (status === 'success' || status === 'completed') {
+    if (['success', 'completed', 'paid'].includes(normalizedStatus)) {
       appStatus = 'completed';
-    } else if (status === 'failed' || status === 'cancelled') {
+    } else if (
+      ['cancelled', 'canceled', 'expired', 'timeout', 'timed_out'].includes(
+        normalizedStatus
+      )
+    ) {
+      appStatus = 'cancelled';
+    } else if (['failed', 'fail', 'error'].includes(normalizedStatus)) {
       appStatus = 'failed';
     }
 
-    // Update Firestore
-    const paymentRef = db.collection('payments').doc(order_id);
-    await paymentRef.update({
-      status: appStatus,
-      zenoTransactionId: transaction_id || null,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      webhookRawData: req.body
-    });
+    // Update Firestore (match on zenoOrderId first, fallback to doc id)
+    const paymentsRef = db.collection('payments');
+    const matching = await paymentsRef.where('zenoOrderId', '==', order_id).get();
+
+    if (matching.empty) {
+      const paymentRef = paymentsRef.doc(order_id);
+      await paymentRef.update({
+        status: appStatus,
+        zenoTransactionId: transaction_id || null,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        webhookRawData: req.body
+      });
+    } else {
+      const batch = db.batch();
+      matching.forEach((doc) => {
+        batch.update(doc.ref, {
+          status: appStatus,
+          zenoTransactionId: transaction_id || null,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          webhookRawData: req.body
+        });
+      });
+      await batch.commit();
+    }
 
     console.log(`✅ Payment ${order_id} updated to ${appStatus}`);
     res.status(200).send("OK");

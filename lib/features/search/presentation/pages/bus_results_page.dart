@@ -18,11 +18,11 @@ class BusResultsPage extends StatelessWidget {
 
   double _calculatePrice(String from, String to) {
     final routes = {
-      'Dar es Salaam-Arusha': 50.0,
-      'Dar es Salaam-Mwanza': 60.0,
-      'Dar es Salaam-Dodoma': 250.0,
-      'Arusha-Mwanza': 450.0,
-      'Mwanza-Dar es Salaam': 600.0,
+      'Dar es Salaam-Arusha': 500.0,
+      'Dar es Salaam-Mwanza': 600.0,
+      'Dar es Salaam-Dodoma': 2500.0,
+      'Arusha-Mwanza': 4500.0,
+      'Mwanza-Dar es Salaam': 6000.0,
     };
     String key = '$from-$to';
     return routes[key] ?? 600.00;
@@ -40,7 +40,7 @@ class BusResultsPage extends StatelessWidget {
         price: basePrice + 5000,
         rating: 4.9,
         availableSeats: 54,
-        amenities: ['WiFi', 'Charging Port', 'Water'],
+        amenities: ['WiFi', 'Charging Port','Tv','Toilet','Water'],
         route: [from, to],
       ),
       Bus(
@@ -53,7 +53,7 @@ class BusResultsPage extends StatelessWidget {
         price: basePrice,
         rating: 4.7,
         availableSeats: 54,
-        amenities: ['WiFi', 'Extra Legroom'],
+        amenities: ['WiFi', 'Extra Legroom','Tv','Toilet','Charging Port','Water'],
         route: [from, to],
       ),
       Bus(
@@ -134,22 +134,30 @@ class BusResultsPage extends StatelessWidget {
                         children: [
                           Text(
                             from,
-                            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold),
                           ),
                           const Padding(
                             padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Icon(Icons.arrow_forward_rounded, color: Colors.white70, size: 20),
+                            child: Icon(Icons.arrow_forward_rounded,
+                                color: Colors.white70, size: 20),
                           ),
                           Text(
                             to,
-                            style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
                         "${date.day}/${date.month}/${date.year} • 1 Passenger • $count Buses Found",
-                        style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 14),
+                        style: TextStyle(
+                            color: Colors.white.withOpacity(0.8), fontSize: 14),
                       ),
                     ],
                   ),
@@ -202,18 +210,25 @@ class BusResultsPage extends StatelessWidget {
                             children: [
                               Text(
                                 bus.name,
-                                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: AppColors.textPrimary),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 18,
+                                    color: AppColors.textPrimary),
                               ),
                               const SizedBox(height: 4),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: AppColors.background,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
                                   bus.type,
-                                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, fontWeight: FontWeight.w600),
+                                  style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600),
                                 ),
                               ),
                             ],
@@ -224,16 +239,20 @@ class BusResultsPage extends StatelessWidget {
                     ),
                     _buildRouteTimeline(bus),
                     Row(
-                      children: bus.amenities.map((a) => Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Icon(_getAmenityIcon(a), size: 16, color: AppColors.textMuted),
-                      )).toList(),
+                      children: bus.amenities
+                          .map((a) => Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: Icon(_getAmenityIcon(a),
+                                    size: 16, color: AppColors.textMuted),
+                              ))
+                          .toList(),
                     ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                 decoration: BoxDecoration(
                   color: AppColors.background.withOpacity(0.5),
                   borderRadius: const BorderRadius.only(
@@ -249,17 +268,24 @@ class BusResultsPage extends StatelessWidget {
                         children: [
                           const TextSpan(
                             text: "TZS ",
-                            style: TextStyle(color: AppColors.primary, fontSize: 14, fontWeight: FontWeight.w600),
+                            style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600),
                           ),
                           TextSpan(
                             text: bus.price.toStringAsFixed(0),
-                            style: const TextStyle(color: AppColors.primary, fontSize: 22, fontWeight: FontWeight.w900),
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
                         color: AppColors.primary,
                         borderRadius: BorderRadius.circular(12),
@@ -267,7 +293,11 @@ class BusResultsPage extends StatelessWidget {
                       ),
                       child: const Text(
                         "BOOK NOW",
-                        style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5),
                       ),
                     ),
                   ],
@@ -300,7 +330,8 @@ class BusResultsPage extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             rating.toString(),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13),
           ),
         ],
       ),
@@ -326,17 +357,27 @@ class _TimePoint extends StatelessWidget {
   final String time;
   final String city;
   final bool isStart;
-  const _TimePoint({required this.time, required this.city, required this.isStart});
+  const _TimePoint(
+      {required this.time, required this.city, required this.isStart});
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: isStart ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+      crossAxisAlignment:
+          isStart ? CrossAxisAlignment.start : CrossAxisAlignment.end,
       children: [
-        Text(time, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.textPrimary)),
+        Text(time,
+            style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+                color: AppColors.textPrimary)),
         const SizedBox(height: 2),
         Text(
           city.toUpperCase(),
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+          style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5),
         ),
       ],
     );
@@ -354,7 +395,10 @@ class _RouteLine extends StatelessWidget {
         children: [
           Text(
             duration,
-            style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+            style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
           Row(
@@ -366,7 +410,11 @@ class _RouteLine extends StatelessWidget {
                   color: AppColors.primary,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 4)],
+                  boxShadow: [
+                    BoxShadow(
+                        color: AppColors.primary.withOpacity(0.3),
+                        blurRadius: 4)
+                  ],
                 ),
               ),
               Expanded(
@@ -374,21 +422,28 @@ class _RouteLine extends StatelessWidget {
                   height: 2,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.primary, AppColors.secondary.withOpacity(0.5)],
+                      colors: [
+                        AppColors.primary,
+                        AppColors.secondary.withOpacity(0.5)
+                      ],
                     ),
                   ),
                 ),
               ),
               Transform.rotate(
                 angle: 0,
-                child: const Icon(Icons.directions_bus_filled_rounded, size: 18, color: AppColors.primary),
+                child: const Icon(Icons.directions_bus_filled_rounded,
+                    size: 18, color: AppColors.primary),
               ),
               Expanded(
                 child: Container(
                   height: 2,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [AppColors.secondary.withOpacity(0.5), AppColors.secondary],
+                      colors: [
+                        AppColors.secondary.withOpacity(0.5),
+                        AppColors.secondary
+                      ],
                     ),
                   ),
                 ),
@@ -400,7 +455,11 @@ class _RouteLine extends StatelessWidget {
                   color: AppColors.secondary,
                   shape: BoxShape.circle,
                   border: Border.all(color: Colors.white, width: 2),
-                  boxShadow: [BoxShadow(color: AppColors.secondary.withOpacity(0.3), blurRadius: 4)],
+                  boxShadow: [
+                    BoxShadow(
+                        color: AppColors.secondary.withOpacity(0.3),
+                        blurRadius: 4)
+                  ],
                 ),
               ),
             ],

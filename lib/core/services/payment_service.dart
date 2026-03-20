@@ -42,6 +42,7 @@ class PaymentService {
     required String email,
     required String fullName,
     required String orderId,
+    String? paymentReference,
   }) async {
     // 🇹🇿 Format phone to 255XXXXXXXXX
     String formattedPhone = phoneNumber.replaceAll(RegExp(r'[^0-9]'), '');
@@ -57,6 +58,7 @@ class PaymentService {
         phoneNumber: formattedPhone,
         status: 'pending',
         customerName: fullName,
+        paymentReference: paymentReference,
       );
 
       // 2. Prepare Zenopay Payload
@@ -68,6 +70,11 @@ class PaymentService {
         'amount': amount.toStringAsFixed(0),
         // Optional: webhook_url for Zenopay to notify your backend/Firebase function
         // 'webhook_url': 'https://your-firebase-function-url.com/zenopay-webhook',
+      };
+      final backendPayload = {
+        ...payload,
+        if (paymentReference != null && paymentReference.trim().isNotEmpty)
+          'payment_reference': paymentReference.trim(),
       };
 
       debugPrint("🔵 INITIATING ZENOPAY: $orderId for TZS $amount");
@@ -86,7 +93,7 @@ class PaymentService {
 
         response = await _dio.post(
           "$backendBaseUrl/zenopay-pay",
-          data: payload,
+          data: backendPayload,
           options: Options(
             contentType: Headers.jsonContentType,
           ),
@@ -111,6 +118,11 @@ class PaymentService {
       }
 
       debugPrint("🔵 ZENOPAY RESPONSE: ${response.data}");
+
+      final String? zenoOrderId = _extractOrderId(response.data);
+      if (zenoOrderId != null) {
+        await _attachZenopayOrderId(orderId, zenoOrderId);
+      }
 
       final result = _parseZenopayResponse(response);
 
@@ -149,6 +161,7 @@ class PaymentService {
     required String phoneNumber,
     required String status,
     required String customerName,
+    String? paymentReference,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -161,6 +174,8 @@ class PaymentService {
         'customerName': customerName,
         'status': status,
         'provider': 'Zenopay',
+        if (paymentReference != null && paymentReference.trim().isNotEmpty)
+          'paymentReference': paymentReference.trim(),
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e) {
@@ -177,6 +192,17 @@ class PaymentService {
       });
     } catch (e) {
       debugPrint("🔥 Firebase Update Error: $e");
+    }
+  }
+
+  Future<void> _attachZenopayOrderId(String orderId, String zenoOrderId) async {
+    try {
+      await _firestore.collection('payments').doc(orderId).update({
+        'zenoOrderId': zenoOrderId,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint("🔥 Firebase Update Error (zenoOrderId): $e");
     }
   }
 
@@ -207,9 +233,16 @@ class PaymentService {
 
     String? status = _extractStatus(data);
     final String? message = _extractErrorMessage(data);
+    final String messageLower = (message ?? '').toLowerCase();
 
     if (status != null) {
       final String normalized = status.toLowerCase();
+      if (_matchesAny(messageLower, const ['request in progress', 'callback'])) {
+        return PaymentInitResult(
+          status: PaymentInitStatus.pending,
+          message: message,
+        );
+      }
       if (_matchesAny(normalized, const ['success', 'completed', 'paid'])) {
         return PaymentInitResult(
           status: PaymentInitStatus.success,
@@ -318,6 +351,24 @@ class PaymentService {
             Map<String, dynamic>.from(nested);
         return _firstString(
             nestedMap, const ['message', 'error', 'errors', 'detail']);
+      }
+    }
+
+    return null;
+  }
+
+  String? _extractOrderId(dynamic data) {
+    if (data == null) return null;
+    if (data is Map) {
+      final Map<String, dynamic> map = Map<String, dynamic>.from(data);
+      final String? direct = _firstString(map, const ['order_id', 'orderId']);
+      if (direct != null) return direct;
+
+      final dynamic nested = map['data'];
+      if (nested is Map) {
+        final Map<String, dynamic> nestedMap =
+            Map<String, dynamic>.from(nested);
+        return _firstString(nestedMap, const ['order_id', 'orderId']);
       }
     }
 

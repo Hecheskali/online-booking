@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:intl/intl.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../search/domain/entities/bus.dart';
 import 'ticket_confirmation_page.dart';
@@ -32,22 +33,31 @@ class _PaymentPageState extends State<PaymentPage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _paymentPhoneController = TextEditingController();
   final PaymentService _paymentService = PaymentService();
+  static const Duration _paymentTimeout = Duration(minutes: 2);
   String selectedMethod = 'M-Pesa';
   String selectedPaymentType = 'mobile'; // 'mobile' or 'bank'
   bool _isProcessing = false;
   bool _isPendingSheetOpen = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
+  Timer? _paymentTimeoutTimer;
   String? _latestOrderId;
 
   @override
   void initState() {
     super.initState();
     _paymentPhoneController.text = widget.phone;
+    _paymentPhoneController.addListener(_syncPaymentMethodWithPhone);
+    final autoMethod = _detectMobileMoneyMethod(widget.phone);
+    if (autoMethod != null) {
+      selectedMethod = autoMethod;
+    }
   }
 
   @override
   void dispose() {
+    _paymentPhoneController.removeListener(_syncPaymentMethodWithPhone);
     _paymentSub?.cancel();
+    _paymentTimeoutTimer?.cancel();
     _paymentPhoneController.dispose();
     super.dispose();
   }
@@ -92,12 +102,74 @@ class _PaymentPageState extends State<PaymentPage> {
     return total;
   }
 
+  void _syncPaymentMethodWithPhone() {
+    if (!mounted || selectedPaymentType != 'mobile') return;
+    final autoMethod = _detectMobileMoneyMethod(_paymentPhoneController.text);
+    if (autoMethod == null || autoMethod == selectedMethod) return;
+    setState(() => selectedMethod = autoMethod);
+  }
+
+  String? _detectMobileMoneyMethod(String rawPhone) {
+    final digits = rawPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    String local = digits;
+    if (local.startsWith('255')) {
+      local = local.substring(3);
+    }
+    if (local.startsWith('0')) {
+      local = local.substring(1);
+    }
+    if (local.length < 2) return null;
+    final prefix = local.substring(0, 2);
+
+    if (['74', '75', '76'].contains(prefix)) return 'M-Pesa';
+    if (['71', '65', '67'].contains(prefix)) return 'Tigo Pesa';
+    if (['68', '69', '78'].contains(prefix)) return 'Airtel Money';
+    if (['62'].contains(prefix)) return 'Halopesa';
+
+    return null;
+  }
+
+  String _shortToken(String value, int maxLen) {
+    final cleaned = value.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    if (cleaned.isEmpty) return '';
+    return cleaned.length <= maxLen ? cleaned : cleaned.substring(0, maxLen);
+  }
+
+  String _buildRouteToken() {
+    if (widget.bus.route.isEmpty) return '';
+    final origin = widget.bus.route.first;
+    final dest = widget.bus.route.last;
+    final originToken = _shortToken(origin, 3);
+    final destToken = _shortToken(dest, 3);
+    if (originToken.isEmpty && destToken.isEmpty) return '';
+    return '$originToken$destToken';
+  }
+
+  String _buildPaymentReference(double amount) {
+    final busToken = _shortToken(widget.bus.name, 8);
+    final routeToken = _buildRouteToken();
+    final dateToken = DateFormat('ddMM').format(widget.travelDate);
+    final seatsToken = 'S${widget.selectedSeats.length}';
+    final amountToken = 'T${amount.toStringAsFixed(0)}';
+    final parts = [
+      busToken,
+      routeToken,
+      dateToken,
+      seatsToken,
+      amountToken,
+    ].where((part) => part.isNotEmpty).toList();
+    final reference = parts.join('-');
+    if (reference.length <= 40) return reference;
+    return reference.substring(0, 40);
+  }
+
   Future<void> _handlePayment() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isProcessing = true);
 
     final double totalAmount = _calculateTotal();
+    final String paymentReference = _buildPaymentReference(totalAmount);
     final user = FirebaseAuth.instance.currentUser;
     String? orderId;
     if (selectedPaymentType == 'mobile') {
@@ -116,6 +188,7 @@ class _PaymentPageState extends State<PaymentPage> {
               email: user?.email ?? "traveler@heches.com",
               fullName: widget.passengerNames[0],
               orderId: orderId!,
+              paymentReference: paymentReference,
             )
           : await _paymentService.initiateBank(
               context: context,
@@ -162,6 +235,8 @@ class _PaymentPageState extends State<PaymentPage> {
 
   void _listenForPaymentStatus(String orderId) {
     _paymentSub?.cancel();
+    _paymentTimeoutTimer?.cancel();
+    _startPaymentTimeout(orderId);
     _paymentSub = FirebaseFirestore.instance
         .collection('payments')
         .doc(orderId)
@@ -174,16 +249,34 @@ class _PaymentPageState extends State<PaymentPage> {
       if (status.isEmpty) return;
 
       if (status == 'completed') {
+        _paymentTimeoutTimer?.cancel();
         _paymentSub?.cancel();
         _closePendingSheetIfOpen();
         if (mounted) _showSuccessAndGenerateTicket(orderId);
         return;
       }
 
-      if (status == 'failed' ||
-          status == 'cancelled' ||
+      if (status == 'cancelled' ||
           status == 'canceled' ||
-          status == 'error') {
+          status == 'timeout' ||
+          status == 'expired') {
+        _paymentTimeoutTimer?.cancel();
+        _paymentSub?.cancel();
+        _closePendingSheetIfOpen();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                "Payment cancelled on your phone or timed out. Please try again."),
+            backgroundColor: AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      if (status == 'failed' || status == 'error') {
+        _paymentTimeoutTimer?.cancel();
         _paymentSub?.cancel();
         _closePendingSheetIfOpen();
         if (!mounted) return;
@@ -197,6 +290,7 @@ class _PaymentPageState extends State<PaymentPage> {
         );
       }
     }, onError: (_) {
+      _paymentTimeoutTimer?.cancel();
       _paymentSub?.cancel();
       _closePendingSheetIfOpen();
       if (!mounted) return;
@@ -208,6 +302,55 @@ class _PaymentPageState extends State<PaymentPage> {
         ),
       );
     });
+  }
+
+  void _startPaymentTimeout(String orderId) {
+    _paymentTimeoutTimer?.cancel();
+    _paymentTimeoutTimer = Timer(_paymentTimeout, () async {
+      final bool didCancel =
+          await _cancelPendingPayment(orderId, reason: 'timeout');
+      if (!didCancel) return;
+      if (!mounted) return;
+      _paymentSub?.cancel();
+      _closePendingSheetIfOpen();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              "Payment timed out. Please try again or use another number."),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
+  }
+
+  Future<bool> _cancelPendingPayment(String orderId,
+      {required String reason}) async {
+    try {
+      final ref =
+          FirebaseFirestore.instance.collection('payments').doc(orderId);
+      return await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        if (!snap.exists) return false;
+        final data = snap.data() ?? {};
+        final status = (data['status'] ?? '').toString().toLowerCase();
+        if (status == 'completed') return false;
+        if (status == 'failed' ||
+            status == 'cancelled' ||
+            status == 'canceled' ||
+            status == 'error') {
+          return false;
+        }
+        tx.update(ref, {
+          'status': 'cancelled',
+          'cancelReason': reason,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+        return true;
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   void _showPendingSheet(String? message) {
@@ -239,17 +382,33 @@ class _PaymentPageState extends State<PaymentPage> {
               message ??
                   "A payment request was sent to your phone. Please approve it to continue.",
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 13),
+              style:
+                  const TextStyle(color: AppColors.textSecondary, fontSize: 13),
             ),
+            _buildPaymentSummaryCard(_calculateTotal()),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               height: 52,
               child: OutlinedButton(
-                onPressed: () {
+                onPressed: () async {
                   _paymentSub?.cancel();
+                  _paymentTimeoutTimer?.cancel();
                   _closePendingSheetIfOpen();
+                  final orderId = _latestOrderId;
+                  if (orderId != null) {
+                    final didCancel = await _cancelPendingPayment(orderId,
+                        reason: 'user_cancelled');
+                    if (didCancel && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Payment cancelled."),
+                          backgroundColor: AppColors.error,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  }
                 },
                 style: OutlinedButton.styleFrom(
                   side: const BorderSide(color: AppColors.textMuted),
@@ -458,6 +617,70 @@ class _PaymentPageState extends State<PaymentPage> {
     );
   }
 
+  String _formatTravelDate(DateTime date) {
+    try {
+      return DateFormat('dd MMM yyyy').format(date);
+    } catch (_) {
+      return "${date.day}/${date.month}/${date.year}";
+    }
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(
+            label.toUpperCase(),
+            style: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPaymentSummaryCard(double amount) {
+    final seats = widget.selectedSeats.join(", ");
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.textMuted.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _summaryRow("Amount", "TZS ${amount.toStringAsFixed(0)}"),
+          const SizedBox(height: 6),
+          _summaryRow("Bus", widget.bus.name),
+          const SizedBox(height: 6),
+          _summaryRow("Seats", seats.isEmpty ? "-" : seats),
+          const SizedBox(height: 6),
+          _summaryRow("Travel Date", _formatTravelDate(widget.travelDate)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPaymentTypeSelector() {
     return Row(
       children: [
@@ -536,7 +759,7 @@ class _PaymentPageState extends State<PaymentPage> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'You will be redirected to complete your bank transfer. Please ensure you have sufficient funds in your selected bank account.',
+            'be redirected to complete your bank transfer. Please ensure you have sufficient funds in your selected bank account.',
             style: TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
