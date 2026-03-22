@@ -1,6 +1,6 @@
 name: online_booking
 description: "A premium bus ticket booking application."
-publish_to: 'none'
+publish_to: "none"
 version: 1.0.0+1
 
 environment:
@@ -10,30 +10,30 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
-  
+
   # Firebase
   firebase_core: ^3.15.2
   cloud_firestore: ^5.6.12
   firebase_auth: ^5.7.0
   google_sign_in: ^6.2.2
-  
+
   # Notifications & Offline Alarms
   flutter_local_notifications: ^17.2.2
   timezone: ^0.9.4
   file_picker: ^8.1.7
-  
+
   # State Management & DI
   flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.6.1
-  
+
   # Navigation
   go_router: ^14.6.0
-  
+
   # Networking & API
   dio: ^5.7.0
   retrofit: ^4.4.1
   url_launcher: ^6.3.1
-  
+
   # UI & UX
   google_maps_flutter: ^2.10.0
   flutter_polyline_points: ^2.1.0
@@ -48,12 +48,12 @@ dependencies:
   screenshot: ^3.0.0
   permission_handler: ^11.3.1
   gal: ^2.3.2
-  
+
   # Security & Encryption
   encrypt: ^5.0.3
   crypto: ^3.0.6
   flutter_secure_storage: ^9.2.2
-  
+
   # Local Storage & Utils
   shared_preferences: ^2.3.5
   geolocator: ^13.0.2
@@ -78,7 +78,7 @@ dev_dependencies:
 flutter_launcher_icons:
   android: "launcher_icons"
   ios: true
-  images_path: "assets/icon/app_icon.png"  
+  images_path: "assets/icon/app_icon.png"
   web:
     generate: true
     image_path: "assets/icon/app_icon.png"
@@ -86,6 +86,7 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
   assets:
-    - assets/images/
+    - assets/images/logo
     - assets/lottie/
     - assets/vectors/
+    - assets/icon/app_icon.png
