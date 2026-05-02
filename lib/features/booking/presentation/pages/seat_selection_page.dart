@@ -87,7 +87,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
         children: [
           _legendItem(
               "Available", Colors.white, Colors.black12, Icons.chair_rounded),
-          _legendItem("VVIP", const Color(0xFFFFD700).withOpacity(0.1),
+          _legendItem("VVIP", const Color(0xFFFFD700).withAlpha(26),
               const Color(0xFFFFD700), Icons.workspace_premium_rounded),
           _legendItem("Selected", AppColors.primary, AppColors.primary,
               Icons.check_circle_rounded),
@@ -119,7 +119,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(40),
           boxShadow: AppColors.softShadow,
-          border: Border.all(color: Colors.black.withOpacity(0.05)),
+          border: Border.all(color: Colors.black.withAlpha(13)),
         ),
         child: Column(
           children: [
@@ -219,8 +219,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(12),
-                  border:
-                      Border.all(color: AppColors.textMuted.withOpacity(0.1)),
+                  border: Border.all(color: AppColors.textMuted.withAlpha(26)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -311,9 +310,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
         decoration: BoxDecoration(
           color: isSelected
               ? AppColors.primary
-              : (isVVIP
-                  ? const Color(0xFFFFD700).withOpacity(0.05)
-                  : Colors.white),
+              : (isVVIP ? const Color(0xFFFFD700).withAlpha(13) : Colors.white),
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
             color: isSelected
@@ -337,7 +334,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                       ? Colors.white
                       : (isVVIP
                           ? const Color(0xFFB8860B)
-                          : AppColors.textMuted.withOpacity(0.5)),
+                          : AppColors.textMuted.withAlpha(128)),
                   size: isVVIP ? 32 : 18,
                 ),
                 const SizedBox(height: 6),
@@ -360,7 +357,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                     style: TextStyle(
                       color: isSelected
                           ? Colors.white70
-                          : const Color(0xFFB8860B).withOpacity(0.6),
+                          : const Color(0xFFB8860B).withAlpha(153),
                       fontSize: 8,
                       fontWeight: FontWeight.w900,
                       letterSpacing: 1,
@@ -392,7 +389,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withAlpha(13),
               blurRadius: 20,
               offset: const Offset(0, -5))
         ],

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/constants/route_pricing.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/constants/tanzania_regions.dart';
 import '../pages/bus_results_page.dart';
@@ -130,6 +131,8 @@ class _SearchCardState extends State<SearchCard> {
                       from: fromRegion,
                       to: toRegion,
                       date: selectedDate,
+                      priceOverride:
+                          RoutePricing.priceFor(fromRegion, toRegion),
                     ),
                   ),
                 );

@@ -34,13 +34,16 @@ class _PaymentPageState extends State<PaymentPage> {
   final TextEditingController _paymentPhoneController = TextEditingController();
   final PaymentService _paymentService = PaymentService();
   static const Duration _paymentTimeout = Duration(minutes: 2);
+  static const Duration _paymentStatusPollInterval = Duration(seconds: 5);
   String selectedMethod = 'M-Pesa';
   String selectedPaymentType = 'mobile'; // 'mobile' or 'bank'
   bool _isProcessing = false;
   bool _isPendingSheetOpen = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
   Timer? _paymentTimeoutTimer;
+  Timer? _paymentStatusPollTimer;
   String? _latestOrderId;
+  bool _isSyncingPaymentStatus = false;
 
   @override
   void initState() {
@@ -58,6 +61,7 @@ class _PaymentPageState extends State<PaymentPage> {
     _paymentPhoneController.removeListener(_syncPaymentMethodWithPhone);
     _paymentSub?.cancel();
     _paymentTimeoutTimer?.cancel();
+    _paymentStatusPollTimer?.cancel();
     _paymentPhoneController.dispose();
     super.dispose();
   }
@@ -182,7 +186,6 @@ class _PaymentPageState extends State<PaymentPage> {
     try {
       final PaymentInitResult result = selectedPaymentType == 'mobile'
           ? await _paymentService.initiateZenopayPayment(
-              context: context,
               phoneNumber: _paymentPhoneController.text,
               amount: totalAmount,
               email: user?.email ?? "traveler@heches.com",
@@ -191,21 +194,23 @@ class _PaymentPageState extends State<PaymentPage> {
               paymentReference: paymentReference,
             )
           : await _paymentService.initiateBank(
-              context: context,
               bankName: selectedMethod,
               amount: totalAmount,
               email: user?.email ?? "traveler@heches.com",
               fullName: widget.passengerNames[0],
             );
 
+      final String? trackedOrderId = result.orderId ?? orderId;
+      _latestOrderId = trackedOrderId;
+
       if (mounted) {
         setState(() => _isProcessing = false);
         if (result.isSuccess) {
-          _showSuccessAndGenerateTicket(orderId);
+          _showSuccessAndGenerateTicket(trackedOrderId);
         } else if (result.isPending) {
           _showPendingSheet(result.message);
-          if (orderId != null) {
-            _listenForPaymentStatus(orderId);
+          if (trackedOrderId != null) {
+            _listenForPaymentStatus(trackedOrderId);
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -236,7 +241,9 @@ class _PaymentPageState extends State<PaymentPage> {
   void _listenForPaymentStatus(String orderId) {
     _paymentSub?.cancel();
     _paymentTimeoutTimer?.cancel();
+    _paymentStatusPollTimer?.cancel();
     _startPaymentTimeout(orderId);
+    _startPaymentStatusPolling(orderId);
     _paymentSub = FirebaseFirestore.instance
         .collection('payments')
         .doc(orderId)
@@ -250,6 +257,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
       if (status == 'completed') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         _paymentSub?.cancel();
         _closePendingSheetIfOpen();
         if (mounted) _showSuccessAndGenerateTicket(orderId);
@@ -261,6 +269,7 @@ class _PaymentPageState extends State<PaymentPage> {
           status == 'timeout' ||
           status == 'expired') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         _paymentSub?.cancel();
         _closePendingSheetIfOpen();
         if (!mounted) return;
@@ -277,6 +286,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
       if (status == 'failed' || status == 'error') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         _paymentSub?.cancel();
         _closePendingSheetIfOpen();
         if (!mounted) return;
@@ -291,6 +301,7 @@ class _PaymentPageState extends State<PaymentPage> {
       }
     }, onError: (_) {
       _paymentTimeoutTimer?.cancel();
+      _paymentStatusPollTimer?.cancel();
       _paymentSub?.cancel();
       _closePendingSheetIfOpen();
       if (!mounted) return;
@@ -311,6 +322,7 @@ class _PaymentPageState extends State<PaymentPage> {
           await _cancelPendingPayment(orderId, reason: 'timeout');
       if (!didCancel) return;
       if (!mounted) return;
+      _paymentStatusPollTimer?.cancel();
       _paymentSub?.cancel();
       _closePendingSheetIfOpen();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -322,6 +334,29 @@ class _PaymentPageState extends State<PaymentPage> {
         ),
       );
     });
+  }
+
+  void _startPaymentStatusPolling(String orderId) {
+    _paymentStatusPollTimer?.cancel();
+    _pollPaymentStatus(orderId);
+    if (PaymentService.backendBaseUrl.isEmpty) return;
+
+    _paymentStatusPollTimer = Timer.periodic(_paymentStatusPollInterval, (_) {
+      _pollPaymentStatus(orderId);
+    });
+  }
+
+  Future<void> _pollPaymentStatus(String orderId) async {
+    if (_isSyncingPaymentStatus || PaymentService.backendBaseUrl.isEmpty) {
+      return;
+    }
+
+    _isSyncingPaymentStatus = true;
+    try {
+      await _paymentService.syncPendingPaymentStatus(orderId);
+    } finally {
+      _isSyncingPaymentStatus = false;
+    }
   }
 
   Future<bool> _cancelPendingPayment(String orderId,
@@ -394,13 +429,15 @@ class _PaymentPageState extends State<PaymentPage> {
                 onPressed: () async {
                   _paymentSub?.cancel();
                   _paymentTimeoutTimer?.cancel();
+                  _paymentStatusPollTimer?.cancel();
                   _closePendingSheetIfOpen();
                   final orderId = _latestOrderId;
                   if (orderId != null) {
                     final didCancel = await _cancelPendingPayment(orderId,
                         reason: 'user_cancelled');
-                    if (didCancel && mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                    if (didCancel) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(this.context).showSnackBar(
                         const SnackBar(
                           content: Text("Payment cancelled."),
                           backgroundColor: AppColors.error,
@@ -454,8 +491,7 @@ class _PaymentPageState extends State<PaymentPage> {
               child: Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    shape: BoxShape.circle),
+                    color: Colors.green.withAlpha(26), shape: BoxShape.circle),
                 child: const Icon(Icons.check_circle_rounded,
                     color: Colors.green, size: 60),
               ),
@@ -664,7 +700,7 @@ class _PaymentPageState extends State<PaymentPage> {
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.textMuted.withOpacity(0.2)),
+        border: Border.all(color: AppColors.textMuted.withAlpha(51)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -712,7 +748,7 @@ class _PaymentPageState extends State<PaymentPage> {
           border: Border.all(
             color: isSelected
                 ? AppColors.primary
-                : AppColors.textMuted.withOpacity(0.3),
+                : AppColors.textMuted.withAlpha(77),
             width: 2,
           ),
           boxShadow: isSelected ? AppColors.softShadow : null,
@@ -736,9 +772,9 @@ class _PaymentPageState extends State<PaymentPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
+        color: Colors.blue.withAlpha(13),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+        border: Border.all(color: Colors.blue.withAlpha(51)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,7 +838,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withAlpha(38),
                     borderRadius: BorderRadius.circular(10)),
                 child: Text("${widget.selectedSeats.length} SEATS",
                     style: const TextStyle(
@@ -815,7 +851,7 @@ class _PaymentPageState extends State<PaymentPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
+                    color: Colors.white.withAlpha(38),
                     borderRadius: BorderRadius.circular(10)),
                 child: Text(widget.bus.name.toUpperCase(),
                     style: const TextStyle(
@@ -890,8 +926,9 @@ class _PaymentPageState extends State<PaymentPage> {
           contentPadding: const EdgeInsets.symmetric(vertical: 20),
         ),
         validator: (value) {
-          if (value == null || value.length < 10)
+          if (value == null || value.length < 10) {
             return "Valid number required";
+          }
           return null;
         },
       ),

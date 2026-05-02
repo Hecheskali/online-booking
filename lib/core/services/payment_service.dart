@@ -1,5 +1,6 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -9,10 +10,12 @@ enum PaymentInitStatus { success, pending, failed }
 class PaymentInitResult {
   final PaymentInitStatus status;
   final String? message;
+  final String? orderId;
 
   const PaymentInitResult({
     required this.status,
     this.message,
+    this.orderId,
   });
 
   bool get isSuccess => status == PaymentInitStatus.success;
@@ -20,15 +23,35 @@ class PaymentInitResult {
 }
 
 class PaymentService {
-  // 🔑 ZENOPAY CONFIGURATION
-  // Replace with your actual Zenopay credentials
-  static const String zenoApiKey =
-      "jmdGZFu2wHrR0GFdnggKHGIV7tkootlLMKcPgli0MBLgG1KRzirIDlXs62eEJaRP2yN-DUNfnVrYGB8mD2R9PQ";
-  static const String zenoAccountId = "zp94191856";
-  static const String zenoSecretKey = "";
-  static const String zenoEndpoint = "https://api.zeno.africa";
-  static const String backendBaseUrl =
+  static const String _configuredBackendBaseUrl =
       String.fromEnvironment('BACKEND_URL', defaultValue: '');
+
+  static String get backendBaseUrl {
+    final configured = _normalizeBaseUrl(_configuredBackendBaseUrl);
+    if (configured.isNotEmpty) {
+      return configured;
+    }
+
+    if (!kDebugMode) {
+      return '';
+    }
+
+    if (kIsWeb) {
+      return 'http://localhost:3000';
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'http://10.0.2.2:3000';
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+        return 'http://localhost:3000';
+      default:
+        return '';
+    }
+  }
 
   final Dio _dio = Dio();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -36,7 +59,6 @@ class PaymentService {
 
   /// Initiate Payment using Zenopay
   Future<PaymentInitResult> initiateZenopayPayment({
-    required BuildContext context,
     required String phoneNumber,
     required double amount,
     required String email,
@@ -50,7 +72,34 @@ class PaymentService {
       formattedPhone = '255${formattedPhone.substring(1)}';
     }
 
+    final user = _auth.currentUser;
+    if (user == null) {
+      return PaymentInitResult(
+        status: PaymentInitStatus.failed,
+        message: 'Please sign in before making a payment.',
+        orderId: orderId,
+      );
+    }
+
+    final String resolvedBackendBaseUrl = backendBaseUrl;
+    if (resolvedBackendBaseUrl.isEmpty) {
+      return PaymentInitResult(
+        status: PaymentInitStatus.failed,
+        message: 'Payment backend is required. Set BACKEND_URL.',
+        orderId: orderId,
+      );
+    }
+
     try {
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        return PaymentInitResult(
+          status: PaymentInitStatus.failed,
+          message: 'Could not verify your session. Please sign in again.',
+          orderId: orderId,
+        );
+      }
+
       // 1. Create a transaction record in Firebase Firestore first (Pending)
       await _saveTransactionToFirebase(
         orderId: orderId,
@@ -72,6 +121,7 @@ class PaymentService {
         // 'webhook_url': 'https://your-firebase-function-url.com/zenopay-webhook',
       };
       final backendPayload = {
+        'app_order_id': orderId,
         ...payload,
         if (paymentReference != null && paymentReference.trim().isNotEmpty)
           'payment_reference': paymentReference.trim(),
@@ -79,43 +129,17 @@ class PaymentService {
 
       debugPrint("🔵 INITIATING ZENOPAY: $orderId for TZS $amount");
 
-      // 3. Call Zenopay API
-      final bool useBackendProxy = kIsWeb || backendBaseUrl.isNotEmpty;
-      final Response response;
-      if (useBackendProxy) {
-        if (backendBaseUrl.isEmpty) {
-          return const PaymentInitResult(
-            status: PaymentInitStatus.failed,
-            message:
-                "Backend URL not configured. Set BACKEND_URL to your server.",
-          );
-        }
-
-        response = await _dio.post(
-          "$backendBaseUrl/zenopay-pay",
-          data: backendPayload,
-          options: Options(
-            contentType: Headers.jsonContentType,
-          ),
-        );
-      } else {
-        final directPayload = {
-          ...payload,
-          'account_id': zenoAccountId,
-          'api_key': zenoApiKey,
-        };
-        if (zenoSecretKey.isNotEmpty) {
-          directPayload['secret_key'] = zenoSecretKey;
-        }
-
-        response = await _dio.post(
-          zenoEndpoint,
-          data: directPayload,
-          options: Options(
-            contentType: Headers.formUrlEncodedContentType,
-          ),
-        );
-      }
+      // 3. Call protected backend payment API
+      final Response response = await _dio.post(
+        "$resolvedBackendBaseUrl/zenopay-pay",
+        data: backendPayload,
+        options: Options(
+          contentType: Headers.jsonContentType,
+          headers: <String, String>{
+            'Authorization': 'Bearer $idToken',
+          },
+        ),
+      );
 
       debugPrint("🔵 ZENOPAY RESPONSE: ${response.data}");
 
@@ -124,7 +148,7 @@ class PaymentService {
         await _attachZenopayOrderId(orderId, zenoOrderId);
       }
 
-      final result = _parseZenopayResponse(response);
+      final result = _parseZenopayResponse(response, orderId: orderId);
 
       if (result.isSuccess) {
         await _updateTransactionStatus(orderId, 'completed');
@@ -137,12 +161,14 @@ class PaymentService {
 
       return result;
     } on DioException catch (e) {
-      final message = _extractErrorMessage(e.response?.data) ?? e.message;
+      final String? message = _extractBackendErrorMessage(
+          e, resolvedBackendBaseUrl);
       debugPrint("💥 ZENOPAY ERROR: $message");
       await _updateTransactionStatus(orderId, 'error');
       return PaymentInitResult(
         status: PaymentInitStatus.failed,
         message: message ?? "Payment request failed",
+        orderId: orderId,
       );
     } catch (e) {
       debugPrint("💥 ZENOPAY ERROR: $e");
@@ -150,6 +176,7 @@ class PaymentService {
       return PaymentInitResult(
         status: PaymentInitStatus.failed,
         message: "Unexpected payment error",
+        orderId: orderId,
       );
     }
   }
@@ -206,9 +233,74 @@ class PaymentService {
     }
   }
 
+  Future<void> syncPendingPaymentStatus(String orderId) async {
+    if (backendBaseUrl.isEmpty) {
+      debugPrint('💥 ZENOPAY STATUS SYNC ERROR: Payment backend is required.');
+      return;
+    }
+
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('💥 ZENOPAY STATUS SYNC ERROR: User is not authenticated.');
+        return;
+      }
+
+      final idToken = await user.getIdToken();
+      if (idToken == null || idToken.isEmpty) {
+        debugPrint('💥 ZENOPAY STATUS SYNC ERROR: Missing auth token.');
+        return;
+      }
+
+      await _dio.get(
+        "$backendBaseUrl/zenopay-status/${Uri.encodeComponent(orderId)}",
+        options: Options(
+          responseType: ResponseType.json,
+          contentType: Headers.jsonContentType,
+          headers: <String, String>{
+            'Authorization': 'Bearer $idToken',
+          },
+        ),
+      );
+    } on DioException catch (e) {
+      debugPrint(
+          "💥 ZENOPAY STATUS SYNC ERROR: ${_extractErrorMessage(e.response?.data) ?? e.message}");
+    } catch (e) {
+      debugPrint("💥 ZENOPAY STATUS SYNC ERROR: $e");
+    }
+  }
+
+  static String _normalizeBaseUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      return '';
+    }
+    return trimmed.endsWith('/')
+        ? trimmed.substring(0, trimmed.length - 1)
+        : trimmed;
+  }
+
+  String? _extractBackendErrorMessage(
+    DioException error,
+    String resolvedBackendBaseUrl,
+  ) {
+    final apiMessage =
+        _extractErrorMessage(error.response?.data) ?? error.message;
+
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout) {
+      if (resolvedBackendBaseUrl.isEmpty) {
+        return 'Payment backend is not configured. Set BACKEND_URL.';
+      }
+      return 'Could not reach payment backend at $resolvedBackendBaseUrl. Start backend/server.js or set BACKEND_URL to a live server.';
+    }
+
+    return apiMessage;
+  }
+
   // Fallback for Bank (If Zenopay supports it, otherwise map to their flow)
   Future<PaymentInitResult> initiateBank({
-    required BuildContext context,
     required String bankName,
     required double amount,
     required String email,
@@ -217,7 +309,6 @@ class PaymentService {
     // For now, mapping Bank to the same Zenopay flow or a custom instruction
     final String orderId = "ZEN-BANK-${DateTime.now().millisecondsSinceEpoch}";
     return await initiateZenopayPayment(
-      context: context,
       phoneNumber:
           "", // Usually bank doesn't need phone for STK but Zenopay might
       amount: amount,
@@ -227,7 +318,8 @@ class PaymentService {
     );
   }
 
-  PaymentInitResult _parseZenopayResponse(Response response) {
+  PaymentInitResult _parseZenopayResponse(Response response,
+      {String? orderId}) {
     final int statusCode = response.statusCode ?? 0;
     final dynamic data = response.data;
 
@@ -237,16 +329,19 @@ class PaymentService {
 
     if (status != null) {
       final String normalized = status.toLowerCase();
-      if (_matchesAny(messageLower, const ['request in progress', 'callback'])) {
+      if (_matchesAny(
+          messageLower, const ['request in progress', 'callback'])) {
         return PaymentInitResult(
           status: PaymentInitStatus.pending,
           message: message,
+          orderId: orderId,
         );
       }
       if (_matchesAny(normalized, const ['success', 'completed', 'paid'])) {
         return PaymentInitResult(
           status: PaymentInitStatus.success,
           message: message,
+          orderId: orderId,
         );
       }
       if (_matchesAny(
@@ -254,13 +349,15 @@ class PaymentService {
         return PaymentInitResult(
           status: PaymentInitStatus.pending,
           message: message,
+          orderId: orderId,
         );
       }
-      if (_matchesAny(
-          normalized, const ['fail', 'failed', 'cancel', 'error'])) {
+      if (_matchesAny(normalized,
+          const ['fail', 'failed', 'cancel', 'error', 'timeout', 'expired'])) {
         return PaymentInitResult(
           status: PaymentInitStatus.failed,
           message: message,
+          orderId: orderId,
         );
       }
     }
@@ -269,12 +366,14 @@ class PaymentService {
       return PaymentInitResult(
         status: PaymentInitStatus.pending,
         message: message,
+        orderId: orderId,
       );
     }
 
     return PaymentInitResult(
       status: PaymentInitStatus.failed,
       message: message ?? "Payment request failed",
+      orderId: orderId,
     );
   }
 
@@ -295,11 +394,11 @@ class PaymentService {
     if (data is Map) {
       final Map<String, dynamic> map = Map<String, dynamic>.from(data);
       final String? direct = _firstString(map, const [
+        'payment_status',
+        'order_status',
         'status',
         'state',
         'result',
-        'payment_status',
-        'order_status'
       ]);
       if (direct != null) return direct;
 
@@ -323,11 +422,11 @@ class PaymentService {
         final Map<String, dynamic> nestedMap =
             Map<String, dynamic>.from(nested);
         return _firstString(nestedMap, const [
+          'payment_status',
+          'order_status',
           'status',
           'state',
           'result',
-          'payment_status',
-          'order_status'
         ]);
       }
     }
@@ -359,6 +458,27 @@ class PaymentService {
 
   String? _extractOrderId(dynamic data) {
     if (data == null) return null;
+    if (data is String) {
+      final Map<String, dynamic>? parsed = _tryParseMap(data);
+      if (parsed != null) {
+        return _extractOrderId(parsed);
+      }
+
+      final Match? jsonMatch =
+          RegExp(r'"order_id"\s*:\s*"([^"]+)"').firstMatch(data);
+      if (jsonMatch != null) {
+        return jsonMatch.group(1);
+      }
+
+      final Match? plainMatch =
+          RegExp(r'order_id\s*[=:]\s*([A-Za-z0-9_-]+)', caseSensitive: false)
+              .firstMatch(data);
+      if (plainMatch != null) {
+        return plainMatch.group(1);
+      }
+      return null;
+    }
+
     if (data is Map) {
       final Map<String, dynamic> map = Map<String, dynamic>.from(data);
       final String? direct = _firstString(map, const ['order_id', 'orderId']);
@@ -370,8 +490,25 @@ class PaymentService {
             Map<String, dynamic>.from(nested);
         return _firstString(nestedMap, const ['order_id', 'orderId']);
       }
+
+      final String? raw = _firstString(map, const ['raw']);
+      if (raw != null) {
+        return _extractOrderId(raw);
+      }
     }
 
+    return null;
+  }
+
+  Map<String, dynamic>? _tryParseMap(String value) {
+    try {
+      final dynamic decoded = jsonDecode(value);
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {
+      // Ignore malformed payloads and fall back to regex extraction.
+    }
     return null;
   }
 

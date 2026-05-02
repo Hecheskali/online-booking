@@ -47,7 +47,7 @@ class AppColors {
   // Custom Shadows
   static List<BoxShadow> softShadow = [
     BoxShadow(
-      color: Colors.black.withOpacity(0.05),
+      color: Colors.black.withAlpha(13),
       blurRadius: 20,
       offset: const Offset(0, 10),
     ),
@@ -55,7 +55,7 @@ class AppColors {
 
   static List<BoxShadow> premiumShadow = [
     BoxShadow(
-      color: primary.withOpacity(0.2),
+      color: primary.withAlpha(51),
       blurRadius: 25,
       offset: const Offset(0, 15),
     ),

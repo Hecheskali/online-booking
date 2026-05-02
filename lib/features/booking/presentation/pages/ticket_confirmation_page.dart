@@ -8,11 +8,15 @@ import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:io';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/services/local_ticket_storage_service.dart';
 import '../../../search/domain/entities/bus.dart';
 import '../../../home/presentation/pages/main_bottom_nav.dart';
+import '../../../home/domain/entities/booked_ticket_record.dart';
 import '../../../../core/services/security_service.dart';
+import '../../../../core/services/payment_service.dart';
 
 class TicketConfirmationPage extends StatefulWidget {
   final Bus bus;
@@ -37,11 +41,18 @@ class TicketConfirmationPage extends StatefulWidget {
 class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   final ScreenshotController screenshotController = ScreenshotController();
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
-  static const Duration _paymentTimeout = Duration(minutes: 2);
+  static const Duration _paymentTimeout = Duration(minutes: 1);
+  static const Duration _paymentStatusPollInterval = Duration(seconds: 5);
   String? _securityHash;
   String _paymentStatus = 'pending';
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _paymentSub;
   Timer? _paymentTimeoutTimer;
+  Timer? _paymentStatusPollTimer;
+  final PaymentService _paymentService = PaymentService();
+  final LocalTicketStorageService _ticketStorageService =
+      LocalTicketStorageService();
+  bool _isSyncingPaymentStatus = false;
+  bool _ticketPersisted = false;
 
   @override
   void initState() {
@@ -53,6 +64,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   void dispose() {
     _paymentSub?.cancel();
     _paymentTimeoutTimer?.cancel();
+    _paymentStatusPollTimer?.cancel();
     super.dispose();
   }
 
@@ -66,7 +78,9 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
 
     _paymentStatus = 'pending';
     _paymentTimeoutTimer?.cancel();
+    _paymentStatusPollTimer?.cancel();
     _startPaymentTimeout(orderId);
+    _startPaymentStatusPolling(orderId);
     _paymentSub = FirebaseFirestore.instance
         .collection('payments')
         .doc(orderId)
@@ -80,6 +94,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
 
       if (status == 'completed') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         if (mounted) {
           setState(() => _paymentStatus = 'completed');
         } else {
@@ -95,6 +110,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
           status == 'timeout' ||
           status == 'expired') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         if (mounted) {
           setState(() => _paymentStatus = 'cancelled');
         } else {
@@ -106,6 +122,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
 
       if (status == 'failed' || status == 'error') {
         _paymentTimeoutTimer?.cancel();
+        _paymentStatusPollTimer?.cancel();
         if (mounted) {
           setState(() => _paymentStatus = 'failed');
         } else {
@@ -115,6 +132,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
       }
     }, onError: (_) {
       _paymentTimeoutTimer?.cancel();
+      _paymentStatusPollTimer?.cancel();
       if (mounted) {
         setState(() => _paymentStatus = 'failed');
       } else {
@@ -126,9 +144,9 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
   void _startPaymentTimeout(String orderId) {
     _paymentTimeoutTimer?.cancel();
     _paymentTimeoutTimer = Timer(_paymentTimeout, () async {
-      final didCancel =
-          await _cancelPendingPayment(orderId, reason: 'timeout');
+      final didCancel = await _cancelPendingPayment(orderId, reason: 'timeout');
       if (!didCancel) return;
+      _paymentStatusPollTimer?.cancel();
       if (mounted) {
         setState(() => _paymentStatus = 'cancelled');
       } else {
@@ -138,10 +156,34 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
     });
   }
 
+  void _startPaymentStatusPolling(String orderId) {
+    _paymentStatusPollTimer?.cancel();
+    _pollPaymentStatus(orderId);
+    if (PaymentService.backendBaseUrl.isEmpty) return;
+
+    _paymentStatusPollTimer = Timer.periodic(_paymentStatusPollInterval, (_) {
+      _pollPaymentStatus(orderId);
+    });
+  }
+
+  Future<void> _pollPaymentStatus(String orderId) async {
+    if (_isSyncingPaymentStatus || PaymentService.backendBaseUrl.isEmpty) {
+      return;
+    }
+
+    _isSyncingPaymentStatus = true;
+    try {
+      await _paymentService.syncPendingPaymentStatus(orderId);
+    } finally {
+      _isSyncingPaymentStatus = false;
+    }
+  }
+
   Future<bool> _cancelPendingPayment(String orderId,
       {required String reason}) async {
     try {
-      final ref = FirebaseFirestore.instance.collection('payments').doc(orderId);
+      final ref =
+          FirebaseFirestore.instance.collection('payments').doc(orderId);
       return await FirebaseFirestore.instance.runTransaction((tx) async {
         final snap = await tx.get(ref);
         if (!snap.exists) return false;
@@ -174,16 +216,82 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
           await _secureStorage.read(key: 'ticket_secret') ?? 'ticket-secret';
       final hash = SecurityService.generateTicketHash(
           "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-$secret");
+      await _persistTicketRecord(hash);
       if (mounted) {
         setState(() => _securityHash = hash);
       }
     } catch (_) {
       final fallbackHash = SecurityService.generateTicketHash(
           "${widget.bus.id}-${widget.passengerName}-${widget.selectedSeats.join()}-ticket-secret");
+      await _persistTicketRecord(fallbackHash);
       if (mounted) {
         setState(() => _securityHash = fallbackHash);
       }
     }
+  }
+
+  Future<void> _persistTicketRecord(String securityHash) async {
+    if (_ticketPersisted) {
+      return;
+    }
+
+    final userId = FirebaseAuth.instance.currentUser?.uid ?? 'guest';
+    final route = widget.bus.route;
+    final record = BookedTicketRecord(
+      id: _ticketId(securityHash),
+      userId: userId,
+      busId: widget.bus.id,
+      busName: widget.bus.name,
+      busType: widget.bus.type,
+      from: route.isNotEmpty ? route.first : 'Unknown',
+      to: route.length > 1 ? route.last : 'Unknown',
+      travelDate: widget.travelDate,
+      departureTime: widget.bus.departureTime,
+      arrivalTime: widget.bus.arrivalTime,
+      seatNumbers: widget.selectedSeats,
+      passengerName: widget.passengerName,
+      totalPrice: _ticketTotalPrice(),
+      status:
+          widget.travelDate.isBefore(DateTime.now()) ? 'Completed' : 'Upcoming',
+      reference: _ticketReference(securityHash),
+      reminderEnabled: false,
+      reminderScheduledAt: null,
+      createdAt: DateTime.now(),
+    );
+
+    await _ticketStorageService.saveTicket(record);
+    _ticketPersisted = true;
+  }
+
+  double _ticketTotalPrice() {
+    var total = 0.0;
+    for (final seat in widget.selectedSeats) {
+      final seatNumber =
+          int.tryParse(seat.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+      if (seatNumber == 53 || seatNumber == 54) {
+        total += widget.bus.price * 1.3;
+      } else {
+        total += widget.bus.price;
+      }
+    }
+    return total;
+  }
+
+  String _ticketId(String securityHash) {
+    final orderId = widget.orderId;
+    if (orderId != null && orderId.isNotEmpty) {
+      return orderId;
+    }
+    return '${widget.bus.id}-${widget.travelDate.millisecondsSinceEpoch}-${widget.selectedSeats.join('-')}-${securityHash.substring(0, securityHash.length >= 8 ? 8 : securityHash.length)}';
+  }
+
+  String _ticketReference(String securityHash) {
+    final orderId = widget.orderId;
+    if (orderId != null && orderId.isNotEmpty) {
+      return orderId;
+    }
+    final prefixLength = securityHash.length >= 12 ? 12 : securityHash.length;
+    return securityHash.substring(0, prefixLength).toUpperCase();
   }
 
   Future<void> _downloadTicket() async {
@@ -242,7 +350,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   "Please approve the payment on your phone to unlock your ticket.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                      color: Colors.white.withAlpha(153), fontSize: 12),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -255,8 +363,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                       (route) => false,
                     ),
                     style: OutlinedButton.styleFrom(
-                      side:
-                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      side: BorderSide(color: Colors.white.withAlpha(102)),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
@@ -299,7 +406,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   "We couldn’t confirm your payment. Please try again.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                      color: Colors.white.withAlpha(153), fontSize: 12),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -312,8 +419,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                       (route) => false,
                     ),
                     style: OutlinedButton.styleFrom(
-                      side:
-                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      side: BorderSide(color: Colors.white.withAlpha(102)),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
@@ -356,7 +462,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   "The payment was cancelled on your phone or timed out.",
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.white.withOpacity(0.6), fontSize: 12),
+                      color: Colors.white.withAlpha(153), fontSize: 12),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -369,8 +475,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                       (route) => false,
                     ),
                     style: OutlinedButton.styleFrom(
-                      side:
-                          BorderSide(color: Colors.white.withOpacity(0.4)),
+                      side: BorderSide(color: Colors.white.withAlpha(102)),
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
@@ -434,13 +539,13 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: isVVIP
-                      ? const Color(0xFFFFD700).withOpacity(0.1)
-                      : Colors.green.withOpacity(0.1),
+                      ? const Color(0xFFFFD700).withAlpha(26)
+                      : Colors.green.withAlpha(26),
                   borderRadius: BorderRadius.circular(30),
                   border: Border.all(
                       color: isVVIP
-                          ? const Color(0xFFFFD700).withOpacity(0.3)
-                          : Colors.green.withOpacity(0.3)),
+                          ? const Color(0xFFFFD700).withAlpha(77)
+                          : Colors.green.withAlpha(77)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -489,7 +594,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   boxShadow: [
                     BoxShadow(
                         color: (isVVIP ? const Color(0xFFB8860B) : Colors.black)
-                            .withOpacity(0.3),
+                            .withAlpha(77),
                         blurRadius: 20)
                   ],
                 ),
@@ -518,7 +623,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
             Text(
               "Present this pass at the Royal Lounge for VVIP check-in.",
               style: TextStyle(
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withAlpha(77),
                   fontSize: 9,
                   fontStyle: FontStyle.italic),
             ),
@@ -535,11 +640,11 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(
-            color: const Color(0xFFFFD700).withOpacity(0.3), width: 2),
+        border:
+            Border.all(color: const Color(0xFFFFD700).withAlpha(77), width: 2),
         boxShadow: [
           BoxShadow(
-              color: const Color(0xFFFFD700).withOpacity(0.2),
+              color: const Color(0xFFFFD700).withAlpha(51),
               blurRadius: 40,
               offset: const Offset(0, 20))
         ],
@@ -624,7 +729,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                         children: [
                           Container(
                               height: 1,
-                              color: const Color(0xFFFFD700).withOpacity(0.3)),
+                              color: const Color(0xFFFFD700).withAlpha(77)),
                           const Icon(Icons.directions_bus_filled_rounded,
                               color: Color(0xFFFFD700), size: 20),
                         ],
@@ -670,14 +775,19 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                     borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                          color: Colors.black.withOpacity(0.2), blurRadius: 10)
+                          color: Colors.black.withAlpha(51), blurRadius: 10)
                     ],
                   ),
                   child: QrImageView(
                     data: "ROYAL-VVIP-$securityHash",
                     version: QrVersions.auto,
                     size: 100.0,
-                    foregroundColor: const Color(0xFF020617),
+                    eyeStyle: const QrEyeStyle(
+                      color: Color(0xFF020617),
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                      color: Color(0xFF020617),
+                    ),
                   ),
                 ),
               ],
@@ -714,7 +824,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.5),
+              color: Colors.black.withAlpha(128),
               blurRadius: 30,
               offset: const Offset(0, 15))
         ],
@@ -771,10 +881,9 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _item("DATE",
-                        DateFormat.yMMMd().format(widget.travelDate)),
-                    _item("SECURE ID",
-                        securityHash.substring(0, 8).toUpperCase(),
+                    _item("DATE", DateFormat.yMMMd().format(widget.travelDate)),
+                    _item(
+                        "SECURE ID", securityHash.substring(0, 8).toUpperCase(),
                         isAccent: true),
                   ],
                 ),
@@ -809,7 +918,12 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                   data: "VALID-TICKET-$securityHash",
                   version: QrVersions.auto,
                   size: 100.0,
-                  foregroundColor: const Color(0xFF020617),
+                  eyeStyle: const QrEyeStyle(
+                    color: Color(0xFF020617),
+                  ),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    color: Color(0xFF020617),
+                  ),
                 ),
               ],
             ),
@@ -827,7 +941,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
         Text(label,
             style: TextStyle(
                 color: isGold
-                    ? const Color(0xFFFFD700).withOpacity(0.6)
+                    ? const Color(0xFFFFD700).withAlpha(153)
                     : Colors.grey,
                 fontSize: 8,
                 fontWeight: FontWeight.w900)),
@@ -854,7 +968,7 @@ class _TicketConfirmationPageState extends State<TicketConfirmationPage> {
                 fontSize: 14)),
         Text(sub,
             style: TextStyle(
-                color: const Color(0xFFFFD700).withOpacity(0.5),
+                color: const Color(0xFFFFD700).withAlpha(128),
                 fontSize: 8,
                 fontWeight: FontWeight.bold)),
       ],

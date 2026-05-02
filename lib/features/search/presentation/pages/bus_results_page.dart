@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/constants/route_pricing.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/entities/bus.dart';
 import '../../../booking/presentation/pages/seat_selection_page.dart';
@@ -8,24 +10,26 @@ class BusResultsPage extends StatelessWidget {
   final String from;
   final String to;
   final DateTime date;
+  final double? priceOverride;
 
   const BusResultsPage({
     super.key,
     required this.from,
     required this.to,
     required this.date,
+    this.priceOverride,
   });
 
   double _calculatePrice(String from, String to) {
-    final routes = {
-      'Dar es Salaam-Arusha': 500.0,
-      'Dar es Salaam-Mwanza': 600.0,
-      'Dar es Salaam-Dodoma': 2500.0,
-      'Arusha-Mwanza': 4500.0,
-      'Mwanza-Dar es Salaam': 6000.0,
-    };
-    String key = '$from-$to';
-    return routes[key] ?? 600.00;
+    if (priceOverride != null) {
+      return priceOverride!;
+    }
+
+    return RoutePricing.priceFor(from, to);
+  }
+
+  String _formatPrice(double price) {
+    return NumberFormat.decimalPattern().format(price);
   }
 
   List<Bus> _getMockBuses(double basePrice) {
@@ -37,10 +41,10 @@ class BusResultsPage extends StatelessWidget {
         departureTime: '06:00 AM',
         arrivalTime: '02:00 PM',
         duration: '8h 00m',
-        price: basePrice + 5000,
+        price: basePrice,
         rating: 4.9,
         availableSeats: 54,
-        amenities: ['WiFi', 'Charging Port','Tv','Toilet','Water'],
+        amenities: ['WiFi', 'Charging Port', 'Tv', 'Toilet', 'Water'],
         route: [from, to],
       ),
       Bus(
@@ -53,7 +57,14 @@ class BusResultsPage extends StatelessWidget {
         price: basePrice,
         rating: 4.7,
         availableSeats: 54,
-        amenities: ['WiFi', 'Extra Legroom','Tv','Toilet','Charging Port','Water'],
+        amenities: [
+          'WiFi',
+          'Extra Legroom',
+          'Tv',
+          'Toilet',
+          'Charging Port',
+          'Water'
+        ],
         route: [from, to],
       ),
       Bus(
@@ -63,7 +74,7 @@ class BusResultsPage extends StatelessWidget {
         departureTime: '10:00 AM',
         arrivalTime: '06:00 PM',
         duration: '8h 00m',
-        price: basePrice - 2000,
+        price: basePrice,
         rating: 4.7,
         availableSeats: 54,
         amenities: ['WiFi'],
@@ -120,7 +131,7 @@ class BusResultsPage extends StatelessWidget {
                 top: -50,
                 child: CircleAvatar(
                   radius: 100,
-                  backgroundColor: Colors.white.withOpacity(0.05),
+                  backgroundColor: Colors.white.withAlpha(13),
                 ),
               ),
               SafeArea(
@@ -157,7 +168,7 @@ class BusResultsPage extends StatelessWidget {
                       Text(
                         "${date.day}/${date.month}/${date.year} • 1 Passenger • $count Buses Found",
                         style: TextStyle(
-                            color: Colors.white.withOpacity(0.8), fontSize: 14),
+                            color: Colors.white.withAlpha(204), fontSize: 14),
                       ),
                     ],
                   ),
@@ -254,7 +265,7 @@ class BusResultsPage extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
                 decoration: BoxDecoration(
-                  color: AppColors.background.withOpacity(0.5),
+                  color: AppColors.background.withAlpha(128),
                   borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(24),
                     bottomRight: Radius.circular(24),
@@ -274,7 +285,7 @@ class BusResultsPage extends StatelessWidget {
                                 fontWeight: FontWeight.w600),
                           ),
                           TextSpan(
-                            text: bus.price.toStringAsFixed(0),
+                            text: _formatPrice(bus.price),
                             style: const TextStyle(
                                 color: AppColors.primary,
                                 fontSize: 22,
@@ -412,8 +423,7 @@ class _RouteLine extends StatelessWidget {
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
                     BoxShadow(
-                        color: AppColors.primary.withOpacity(0.3),
-                        blurRadius: 4)
+                        color: AppColors.primary.withAlpha(77), blurRadius: 4)
                   ],
                 ),
               ),
@@ -424,7 +434,7 @@ class _RouteLine extends StatelessWidget {
                     gradient: LinearGradient(
                       colors: [
                         AppColors.primary,
-                        AppColors.secondary.withOpacity(0.5)
+                        AppColors.secondary.withAlpha(128)
                       ],
                     ),
                   ),
@@ -441,7 +451,7 @@ class _RouteLine extends StatelessWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.secondary.withOpacity(0.5),
+                        AppColors.secondary.withAlpha(128),
                         AppColors.secondary
                       ],
                     ),
@@ -457,8 +467,7 @@ class _RouteLine extends StatelessWidget {
                   border: Border.all(color: Colors.white, width: 2),
                   boxShadow: [
                     BoxShadow(
-                        color: AppColors.secondary.withOpacity(0.3),
-                        blurRadius: 4)
+                        color: AppColors.secondary.withAlpha(77), blurRadius: 4)
                   ],
                 ),
               ),

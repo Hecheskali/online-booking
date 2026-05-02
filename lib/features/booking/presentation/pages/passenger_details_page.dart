@@ -27,7 +27,7 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _nidaController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
-  
+
   String _networkProvider = "Unknown";
   Color _providerColor = Colors.grey;
 
@@ -97,7 +97,6 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                   children: [
                     _buildBusSummary(),
                     const SizedBox(height: 32),
-                    
                     _buildSectionHeader("IDENTITY VERIFICATION"),
                     const SizedBox(height: 16),
                     _buildTextField(
@@ -106,12 +105,13 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                       icon: Icons.fingerprint_rounded,
                       keyboardType: TextInputType.number,
                       validator: (value) {
-                        if (value == null || value.length != 20) return "Valid 20-digit NIDA required";
+                        if (value == null || value.length != 20) {
+                          return "Valid 20-digit NIDA required";
+                        }
                         return null;
                       },
                     ),
                     const SizedBox(height: 32),
-
                     _buildSectionHeader("PASSENGER DETAILS"),
                     const SizedBox(height: 16),
                     ...List.generate(widget.selectedSeats.length, (index) {
@@ -131,19 +131,26 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                               Row(
                                 children: [
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 4),
                                     decoration: BoxDecoration(
-                                      color: AppColors.primary.withOpacity(0.1),
+                                      color: AppColors.primary.withAlpha(26),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: Text(
                                       widget.selectedSeats[index],
-                                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w800, fontSize: 12),
+                                      style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12),
                                     ),
                                   ),
                                   const SizedBox(width: 12),
-                                  Text("PASSENGER ${index + 1}", 
-                                       style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: AppColors.textPrimary)),
+                                  Text("PASSENGER ${index + 1}",
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 14,
+                                          color: AppColors.textPrimary)),
                                 ],
                               ),
                               const SizedBox(height: 20),
@@ -155,11 +162,14 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                               const SizedBox(height: 20),
                               Row(
                                 children: [
-                                  _genderOption(index, 'Male', Icons.male_rounded),
+                                  _genderOption(
+                                      index, 'Male', Icons.male_rounded),
                                   const SizedBox(width: 12),
-                                  _genderOption(index, 'Female', Icons.female_rounded),
+                                  _genderOption(
+                                      index, 'Female', Icons.female_rounded),
                                   const SizedBox(width: 12),
-                                  _genderOption(index, 'Child', Icons.child_care_rounded),
+                                  _genderOption(
+                                      index, 'Child', Icons.child_care_rounded),
                                 ],
                               ),
                             ],
@@ -167,7 +177,6 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                         ),
                       );
                     }),
-
                     _buildSectionHeader("PAYMENT CONTACT"),
                     const SizedBox(height: 16),
                     Container(
@@ -185,7 +194,9 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                             icon: Icons.phone_android_rounded,
                             keyboardType: TextInputType.phone,
                             validator: (value) {
-                              if (value == null || value.length < 10) return "Enter valid number";
+                              if (value == null || value.length < 10) {
+                                return "Enter valid number";
+                              }
                               return null;
                             },
                           ),
@@ -193,18 +204,25 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                             FadeInDown(
                               child: Container(
                                 margin: const EdgeInsets.only(top: 12),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: _providerColor.withOpacity(0.05),
+                                  color: _providerColor.withAlpha(13),
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: _providerColor.withOpacity(0.2)),
+                                  border: Border.all(
+                                      color: _providerColor.withAlpha(51)),
                                 ),
                                 child: Row(
                                   children: [
-                                    Icon(Icons.verified_user_rounded, color: _providerColor, size: 16),
+                                    Icon(Icons.verified_user_rounded,
+                                        color: _providerColor, size: 16),
                                     const SizedBox(width: 12),
-                                    Text(_networkProvider, 
-                                         style: TextStyle(color: _providerColor, fontWeight: FontWeight.w800, fontSize: 11, letterSpacing: 0.5)),
+                                    Text(_networkProvider,
+                                        style: TextStyle(
+                                            color: _providerColor,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 11,
+                                            letterSpacing: 0.5)),
                                   ],
                                 ),
                               ),
@@ -238,16 +256,20 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
       backgroundColor: AppColors.primary,
       elevation: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded,
+            color: Colors.white, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       flexibleSpace: FlexibleSpaceBar(
         centerTitle: true,
         title: const Text(
           "PASSENGER INFO",
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 2),
+          style: TextStyle(
+              fontSize: 14, fontWeight: FontWeight.w900, letterSpacing: 2),
         ),
-        background: Container(decoration: const BoxDecoration(gradient: AppColors.primaryGradient)),
+        background: Container(
+            decoration:
+                const BoxDecoration(gradient: AppColors.primaryGradient)),
       ),
     );
   }
@@ -255,7 +277,11 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
   Widget _buildSectionHeader(String title) {
     return Text(
       title,
-      style: const TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+      style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.5),
     );
   }
 
@@ -265,7 +291,12 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withAlpha(13),
+              blurRadius: 20,
+              offset: const Offset(0, -5))
+        ],
       ),
       child: SafeArea(
         top: false,
@@ -286,7 +317,8 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
                     builder: (context) => PaymentPage(
                       bus: widget.bus,
                       selectedSeats: widget.selectedSeats,
-                      passengerNames: _nameControllers.map((c) => c.text).toList(),
+                      passengerNames:
+                          _nameControllers.map((c) => c.text).toList(),
                       phone: _phoneController.text,
                       travelDate: widget.travelDate,
                     ),
@@ -298,7 +330,12 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
             ),
-            child: const Text("PROCEED TO PAYMENT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1)),
+            child: const Text("PROCEED TO PAYMENT",
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1)),
           ),
         ),
       ),
@@ -316,13 +353,22 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
           decoration: BoxDecoration(
             color: isSelected ? AppColors.primary : AppColors.background,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isSelected ? AppColors.primary : Colors.transparent),
+            border: Border.all(
+                color: isSelected ? AppColors.primary : Colors.transparent),
           ),
           child: Column(
             children: [
-              Icon(icon, color: isSelected ? Colors.white : AppColors.textMuted, size: 20),
+              Icon(icon,
+                  color: isSelected ? Colors.white : AppColors.textMuted,
+                  size: 20),
               const SizedBox(height: 6),
-              Text(label, style: TextStyle(fontSize: 11, color: isSelected ? Colors.white : AppColors.textSecondary, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600)),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color:
+                          isSelected ? Colors.white : AppColors.textSecondary,
+                      fontWeight:
+                          isSelected ? FontWeight.w800 : FontWeight.w600)),
             ],
           ),
         ),
@@ -342,22 +388,37 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
         children: [
           Container(
             padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-            child: const Icon(Icons.directions_bus_rounded, color: AppColors.primary, size: 24),
+            decoration: BoxDecoration(
+                color: AppColors.primary.withAlpha(26),
+                borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.directions_bus_rounded,
+                color: AppColors.primary, size: 24),
           ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.bus.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: AppColors.textPrimary)),
-                Text("${widget.bus.type} • ${widget.selectedSeats.length} Seats", style: const TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600)),
+                Text(widget.bus.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                        color: AppColors.textPrimary)),
+                Text(
+                    "${widget.bus.type} • ${widget.selectedSeats.length} Seats",
+                    style: const TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
               ],
             ),
           ),
           Text(
             "TZS ${(widget.selectedSeats.length * widget.bus.price).toStringAsFixed(0)}",
-            style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.primary, fontSize: 18),
+            style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                color: AppColors.primary,
+                fontSize: 18),
           ),
         ],
       ),
@@ -380,12 +441,18 @@ class _PassengerDetailsPageState extends State<PassengerDetailsPage> {
         controller: controller,
         keyboardType: keyboardType,
         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-        validator: validator ?? (value) => value == null || value.isEmpty ? "Required" : null,
+        validator: validator ??
+            (value) => value == null || value.isEmpty ? "Required" : null,
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13, fontWeight: FontWeight.w600),
+          labelStyle: const TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 13,
+              fontWeight: FontWeight.w600),
           prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(18),
+              borderSide: BorderSide.none),
           filled: true,
           fillColor: Colors.transparent,
           contentPadding: const EdgeInsets.symmetric(vertical: 18),

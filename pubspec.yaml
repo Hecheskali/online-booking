@@ -74,11 +74,12 @@ dev_dependencies:
   json_serializable: ^6.9.0
   retrofit_generator: ^9.1.5
   flutter_launcher_icons: ^0.14.3
+  shimmer: ^3.0.0
 
 flutter_launcher_icons:
-  android: "launcher_icons"
+  android: true
   ios: true
-  images_path: "assets/icon/app_icon.png"
+  image_path: "assets/icon/app_icon.png"
   web:
     generate: true
     image_path: "assets/icon/app_icon.png"
@@ -90,3 +91,4 @@ flutter:
     - assets/lottie/
     - assets/vectors/
     - assets/icon/app_icon.png
+    - assets/images/kilimanjaro_royal_express_bus.png

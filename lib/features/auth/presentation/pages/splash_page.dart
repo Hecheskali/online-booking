@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../home/presentation/pages/main_bottom_nav.dart';
 import 'login_page.dart';
 
 class SplashPage extends StatefulWidget {
@@ -19,11 +21,15 @@ class _SplashPageState extends State<SplashPage> {
 
   _navigateToLogin() async {
     await Future.delayed(const Duration(seconds: 3));
+    final destination = FirebaseAuth.instance.currentUser == null
+        ? const LoginPage()
+        : const MainBottomNav();
+
     if (mounted) {
       Navigator.pushReplacement(
         context,
         PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+          pageBuilder: (context, animation, secondaryAnimation) => destination,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             return FadeTransition(opacity: animation, child: child);
           },
@@ -51,7 +57,7 @@ class _SplashPageState extends State<SplashPage> {
                 duration: const Duration(seconds: 2),
                 child: CircleAvatar(
                   radius: 200,
-                  backgroundColor: Colors.white.withOpacity(0.05),
+                  backgroundColor: Colors.white.withAlpha(13),
                 ),
               ),
             ),
@@ -62,11 +68,11 @@ class _SplashPageState extends State<SplashPage> {
                 duration: const Duration(seconds: 2),
                 child: CircleAvatar(
                   radius: 150,
-                  backgroundColor: Colors.white.withOpacity(0.05),
+                  backgroundColor: Colors.white.withAlpha(13),
                 ),
               ),
             ),
-            
+
             Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -80,7 +86,7 @@ class _SplashPageState extends State<SplashPage> {
                         borderRadius: BorderRadius.circular(40),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
+                            color: Colors.black.withAlpha(51),
                             blurRadius: 40,
                             offset: const Offset(0, 20),
                           ),
@@ -109,16 +115,18 @@ class _SplashPageState extends State<SplashPage> {
                         ),
                         const SizedBox(height: 12),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 6),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
+                            color: Colors.white.withAlpha(26),
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: Colors.white.withOpacity(0.2)),
+                            border:
+                                Border.all(color: Colors.white.withAlpha(51)),
                           ),
                           child: Text(
                             "PREMIUM TRAVEL EXPERIENCE",
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.9),
+                              color: Colors.white.withAlpha(230),
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
                               letterSpacing: 2,

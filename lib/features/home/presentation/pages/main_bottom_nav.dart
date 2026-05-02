@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:animate_do/animate_do.dart';
 import '../../../../core/theme/app_colors.dart';
 import 'home_page.dart';
+import 'history.dart';
+import 'profile.dart';
+import 'track.dart';
 
 class MainBottomNav extends StatefulWidget {
   const MainBottomNav({super.key});
@@ -12,14 +15,7 @@ class MainBottomNav extends StatefulWidget {
 
 class _MainBottomNavState extends State<MainBottomNav> {
   int _currentIndex = 0;
-
-  final List<Widget> _pages = [
-    const HomePage(),
-    const PlaceholderScreen(title: "Live Tracking", icon: Icons.map_rounded),
-    const PlaceholderScreen(
-        title: "My Tickets", icon: Icons.confirmation_number_rounded),
-    const PlaceholderScreen(title: "Profile", icon: Icons.person_rounded),
-  ];
+  final Set<int> _loadedIndexes = {0};
 
   @override
   Widget build(BuildContext context) {
@@ -27,18 +23,23 @@ class _MainBottomNavState extends State<MainBottomNav> {
       extendBody: true, // Allows content to flow behind the navigation bar
       body: IndexedStack(
         index: _currentIndex,
-        children: _pages,
+        children: List.generate(
+          4,
+          (index) => _loadedIndexes.contains(index)
+              ? _buildPage(index)
+              : const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: FadeInUp(
         duration: const Duration(milliseconds: 800),
         child: Container(
           margin: const EdgeInsets.fromLTRB(24, 0, 24, 30),
           decoration: BoxDecoration(
-            color: AppColors.darkSurface.withOpacity(0.95),
+            color: AppColors.darkSurface.withAlpha(242),
             borderRadius: BorderRadius.circular(30),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.3),
+                color: Colors.black.withAlpha(77),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -64,7 +65,10 @@ class _MainBottomNavState extends State<MainBottomNav> {
   Widget _buildNavItem(int index, IconData icon, String label) {
     bool isSelected = _currentIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
+      onTap: () => setState(() {
+        _currentIndex = index;
+        _loadedIndexes.add(index);
+      }),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -100,52 +104,19 @@ class _MainBottomNavState extends State<MainBottomNav> {
       ),
     );
   }
-}
 
-class PlaceholderScreen extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  const PlaceholderScreen({super.key, required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: AppColors.background,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            FadeInDown(
-              child: Icon(icon,
-                  size: 80, color: AppColors.primary.withOpacity(0.1)),
-            ),
-            const SizedBox(height: 24),
-            FadeInUp(
-              child: Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 24,
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            FadeInUp(
-              delay: const Duration(milliseconds: 200),
-              child: const Text(
-                "Experience Coming Soon",
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return const HomePage();
+      case 1:
+        return const TrackPage();
+      case 2:
+        return const HistoryPage();
+      case 3:
+        return const ProfilePage();
+      default:
+        return const SizedBox.shrink();
+    }
   }
 }

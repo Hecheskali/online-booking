@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:animate_do/animate_do.dart';
+import '../../../../core/services/app_session_service.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class TrackingPage extends StatefulWidget {
@@ -15,7 +16,7 @@ class TrackingPage extends StatefulWidget {
 class _TrackingPageState extends State<TrackingPage> {
   GoogleMapController? _mapController;
   StreamSubscription<Position>? _positionStream;
-  
+
   Position? _currentPosition;
   double _currentSpeed = 0.0;
   bool _isMapLoading = true;
@@ -54,7 +55,7 @@ class _TrackingPageState extends State<TrackingPage> {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) return;
     }
-    
+
     if (permission == LocationPermission.deniedForever) return;
 
     _startTracking();
@@ -99,12 +100,17 @@ class _TrackingPageState extends State<TrackingPage> {
           if (!_isMapLoading && _currentPosition != null)
             GoogleMap(
               initialCameraPosition: CameraPosition(
-                target: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                target: LatLng(
+                    _currentPosition!.latitude, _currentPosition!.longitude),
                 zoom: 16,
               ),
+              style: _mapStyle,
+              onTap: (_) => AppSessionService.instance.markActivity(),
+              onLongPress: (_) => AppSessionService.instance.markActivity(),
+              onCameraMoveStarted: AppSessionService.instance.markActivity,
+              onCameraIdle: AppSessionService.instance.markActivity,
               onMapCreated: (controller) {
                 _mapController = controller;
-                _mapController!.setMapStyle(_mapStyle);
               },
               myLocationEnabled: true,
               myLocationButtonEnabled: false,
@@ -112,8 +118,8 @@ class _TrackingPageState extends State<TrackingPage> {
               compassEnabled: false,
             )
           else
-            const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-
+            const Center(
+                child: CircularProgressIndicator(color: AppColors.primary)),
           _buildGlassHeader(),
           _buildSpeedometerOverlay(),
           _buildTelemetryCard(),
@@ -131,9 +137,11 @@ class _TrackingPageState extends State<TrackingPage> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withAlpha(230),
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20)],
+            boxShadow: [
+              BoxShadow(color: Colors.black.withAlpha(26), blurRadius: 20)
+            ],
           ),
           child: Row(
             children: [
@@ -144,19 +152,28 @@ class _TrackingPageState extends State<TrackingPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text("Live Journey Stream", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                    Text("Route: Dar es Salaam → Mwanza", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                    Text("Live Journey Stream",
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text("Route: Dar es Salaam → Mwanza",
+                        style: TextStyle(fontSize: 10, color: Colors.grey)),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8)),
                 child: const Row(
                   children: [
                     Icon(Icons.circle, color: Colors.red, size: 8),
                     SizedBox(width: 4),
-                    Text("LIVE", style: TextStyle(color: Colors.red, fontSize: 10, fontWeight: FontWeight.bold)),
+                    Text("LIVE",
+                        style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -181,12 +198,23 @@ class _TrackingPageState extends State<TrackingPage> {
           ),
           child: Column(
             children: [
-              const Text("SPEED", style: TextStyle(color: Colors.white54, fontSize: 8, fontWeight: FontWeight.bold)),
+              const Text("SPEED",
+                  style: TextStyle(
+                      color: Colors.white54,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold)),
               Text(
                 _currentSpeed.toStringAsFixed(0),
-                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900),
               ),
-              const Text("KM/H", style: TextStyle(color: AppColors.accent, fontSize: 8, fontWeight: FontWeight.bold)),
+              const Text("KM/H",
+                  style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold)),
             ],
           ),
         ),
@@ -205,7 +233,12 @@ class _TrackingPageState extends State<TrackingPage> {
           decoration: BoxDecoration(
             color: const Color(0xFF1E293B),
             borderRadius: BorderRadius.circular(30),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 30, offset: const Offset(0, 10))],
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withAlpha(77),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10))
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -214,16 +247,24 @@ class _TrackingPageState extends State<TrackingPage> {
                 children: [
                   Container(
                     padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.1), shape: BoxShape.circle),
-                    child: const Icon(Icons.bus_alert_rounded, color: AppColors.primary),
+                    decoration: BoxDecoration(
+                        color: AppColors.primary.withAlpha(26),
+                        shape: BoxShape.circle),
+                    child: const Icon(Icons.bus_alert_rounded,
+                        color: AppColors.primary),
                   ),
                   const SizedBox(width: 16),
                   const Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Kilimanjaro Royal - T 777 ABC", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        Text("Current Altitude: 1,200m ASL", style: TextStyle(color: Colors.white54, fontSize: 10)),
+                        Text("Kilimanjaro Royal - T 777 ABC",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                        Text("Current Altitude: 1,200m ASL",
+                            style:
+                                TextStyle(color: Colors.white54, fontSize: 10)),
                       ],
                     ),
                   ),
@@ -249,9 +290,12 @@ class _TrackingPageState extends State<TrackingPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
                   ),
-                  child: const Text("NOTIFY FAMILY OF LOCATION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  child: const Text("NOTIFY FAMILY OF LOCATION",
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
               ),
             ],
@@ -266,8 +310,11 @@ class _TrackingPageState extends State<TrackingPage> {
       children: [
         Icon(icon, color: Colors.white24, size: 20),
         const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10)),
-        Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(color: Colors.white54, fontSize: 10)),
+        Text(value,
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold)),
       ],
     );
   }
